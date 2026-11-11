@@ -31,9 +31,21 @@ enum HTMLParsing {
         }
     }
 
+    /// Tableaux « Manifestation | Epreuve | Date | Classement » de `/manifestations/resultats`.
+    static func resultats(from html: String) -> [Resultat] {
+        html.split(separator: #/<tr[\s>]/#).dropFirst().compactMap { ligne -> Resultat? in
+            let cellules = String(ligne).matches(of: #/<td[^>]*>([\s\S]*?)</td>/#).map { String($0.output.1) }
+            guard cellules.count >= 4, let date = premiereDate(clean(cellules[2])) else { return nil }
+            let id = cellules[0].firstMatch(of: #/manifestations?/(?:show/)?(\d+)/#).flatMap { Int($0.output.1) }
+            let classement = clean(cellules[3])
+            guard !classement.isEmpty else { return nil }
+            return Resultat(manifestationID: id, libelle: clean(cellules[0]), date: date, classement: classement)
+        }
+    }
+
     static func profil(from html: String) -> Profil {
         var p = Profil()
-        if let m = html.firstMatch(of: #/src="([^"]*photos_personnes[^"]*)"/#) { p.photoURL = URL(string: String(m.output.1)) }
+        if let m = html.firstMatch(of: #/src="([^"]*photos_personnes[^"]*)"/#) { p.photoURL = URL(string: String(m.output.1).replacingOccurrences(of: "&amp;", with: "&"), relativeTo: UfolepClient.baseURL)?.absoluteURL }
         if let m = html.firstMatch(of: #/font-weight-semibold text-default d-block">([\s\S]*?)</span>\s*<span class="text-muted">([\s\S]*?)</span>/#) {
             p.nom = clean(String(m.output.1))
             p.numeroLicence = clean(String(m.output.2))

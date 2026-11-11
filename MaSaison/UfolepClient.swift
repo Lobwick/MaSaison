@@ -109,6 +109,11 @@ final class UfolepClient {
         HTMLParsing.inscriptions(from: try await getHTML("manifestations/liste-inscriptions"))
     }
 
+    /// Classements du licencié dans les manifestations passées.
+    func fetchResultats() async throws -> [Resultat] {
+        HTMLParsing.resultats(from: try await getHTML("manifestations/resultats"))
+    }
+
     func fetchCartes() async throws -> [Carte] {
         HTMLParsing.cartes(from: try await getHTML("cartes-pass/cartes"))
     }

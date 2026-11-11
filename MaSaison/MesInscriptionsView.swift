@@ -5,6 +5,7 @@ struct MesInscriptionsView: View {
     @Environment(AuthModel.self) private var auth
     @Environment(AgendaStore.self) private var agenda
     @State private var inscriptions: [Inscription] = []
+    @State private var resultats: [Resultat] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
 
@@ -16,7 +17,7 @@ struct MesInscriptionsView: View {
     }
 
     var body: some View {
-        ScrollView {
+        ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: 20) {
                 VStack(alignment: .leading, spacing: 4) {
                     Eyebrow("UFOLEP · SAISON \(saison)", color: Theme.accent)
@@ -56,6 +57,7 @@ struct MesInscriptionsView: View {
                 }
             }
             .padding(.horizontal, 20).padding(.top, 24).padding(.bottom, 24)
+            .containerRelativeFrame(.horizontal)
         }
         .overlay { if isLoading && inscriptions.isEmpty { ProgressView().tint(Theme.accent) } }
         .screenBackground()
@@ -89,9 +91,16 @@ struct MesInscriptionsView: View {
     private func ligne(_ i: Inscription) -> some View {
         NavigationLink { InscriptionDetailLoader(inscription: i) } label: {
             RowCard(date: i.dateDebut, title: i.libelle,
-                    subtitle: [i.organisateur, i.epreuves.flatMap(\.niveaux).first].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
+                    subtitle: [i.organisateur, i.epreuves.flatMap(\.niveaux).first].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "),
+                    resultat: i.estTerminee ? resultat(de: i) : nil)
         }
         .buttonStyle(.plain)
+    }
+
+    /// Par identifiant de manifestation, à défaut par date (les libellés diffèrent d'une page à l'autre).
+    private func resultat(de i: Inscription) -> Resultat? {
+        resultats.first { $0.manifestationID == i.manifestationID }
+            ?? resultats.first { $0.date != nil && $0.date == i.dateDebut }
     }
 
     private func load() async {
@@ -100,6 +109,8 @@ struct MesInscriptionsView: View {
         defer { isLoading = false }
         do {
             inscriptions = try await auth.withSession { try await auth.client.fetchInscriptions() }
+            // les résultats sont un bonus : leur échec ne bloque pas l'accueil
+            resultats = (try? await auth.withSession { try await auth.client.fetchResultats() }) ?? resultats
         } catch {
             errorMessage = error.localizedDescription
         }

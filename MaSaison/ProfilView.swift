@@ -8,11 +8,12 @@ struct ProfilView: View {
     @AppStorage("boutonAgenda") private var boutonAgenda = true
     @AppStorage("echauffementMinutes") private var echauffement = 60
     @State private var profil: Profil?
+    @State private var photo: UIImage?
     @State private var anciennesOuvert = false
 
     var body: some View {
         @Bindable var store = store
-        ScrollView {
+        ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: 22) {
                 entete
 
@@ -84,10 +85,18 @@ struct ProfilView: View {
                     .buttonStyle(PrimaryButtonStyle(danger: true))
             }
             .padding(.horizontal, 20).padding(.top, 24).padding(.bottom, 24)
+            .containerRelativeFrame(.horizontal)
         }
         .screenBackground()
         .toolbar(.hidden, for: .navigationBar)
-        .task { profil = try? await auth.withSession { try await auth.client.fetchProfil() } }
+        .task {
+            profil = try? await auth.withSession { try await auth.client.fetchProfil() }
+            // la photo du site demande la session du licencié ; sans photo, on garde les initiales
+            if let url = profil?.photoURL,
+               let data = try? await auth.withSession({ try await auth.client.download(url) }) {
+                photo = UIImage(data: data)
+            }
+        }
         .onAppear { AppTips.accueil.invalidate(reason: .actionPerformed) }
     }
 
@@ -95,9 +104,16 @@ struct ProfilView: View {
 
     private var entete: some View {
         HStack(spacing: 16) {
-            Text(initiales).font(.cond(30)).foregroundStyle(Theme.text)
-                .frame(width: 76, height: 76).background(Theme.surface2, in: Circle())
-                .overlay(Circle().stroke(Theme.accent, lineWidth: 3))
+            Group {
+                if let photo {
+                    Image(uiImage: photo).resizable().scaledToFill()
+                        .accessibilityLabel("Photo de profil")
+                } else {
+                    Text(initiales).font(.cond(30)).foregroundStyle(Theme.text)
+                }
+            }
+            .frame(width: 76, height: 76).background(Theme.surface2).clipShape(Circle())
+            .overlay(Circle().stroke(Theme.accent, lineWidth: 3))
             VStack(alignment: .leading, spacing: 4) {
                 Text(nomAffiche).font(.cond(34)).textCase(.uppercase).foregroundStyle(Theme.text).lineLimit(2)
                 if let carte = cartes.cartesActives.first {

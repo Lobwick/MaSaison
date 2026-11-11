@@ -23,7 +23,7 @@ struct ManifestationsView: View {
     private var nombreFiltres: Int { (departementIDs.isEmpty ? 0 : 1) + (sportCodes.isEmpty ? 0 : 1) }
 
     var body: some View {
-        ScrollView {
+        ScrollView(.vertical) {
             LazyVStack(alignment: .leading, spacing: 16) {
                 Text("Manifestations").pageTitle()
 
@@ -81,6 +81,7 @@ struct ManifestationsView: View {
                 }
             }
             .padding(.horizontal, 20).padding(.top, 24).padding(.bottom, 24)
+            .containerRelativeFrame(.horizontal)
         }
         .overlay {
             if isLoading && manifestations.isEmpty { ProgressView().tint(Theme.accent) }

@@ -197,6 +197,7 @@ struct RowCard: View {
     var highlighted = false
     var subtitleColor: Color = Theme.muted
     var inscrit = false
+    var resultat: Resultat?
 
     var body: some View {
         HStack(spacing: 14) {
@@ -207,6 +208,13 @@ struct RowCard: View {
                 Text(subtitle).font(.barlow(13)).foregroundStyle(subtitleColor)
             }
             Spacer(minLength: 0)
+            if let resultat {
+                Text(resultat.texteCourt).font(.cond(resultat.place == nil ? 14 : 20, .semibold))
+                    .foregroundStyle(resultat.place == nil ? Theme.muted : Theme.accent)
+                    .padding(.horizontal, 10).frame(minHeight: 30)
+                    .background(resultat.place == nil ? Theme.surface : Theme.accent.opacity(0.13), in: Capsule())
+                    .accessibilityLabel(resultat.place.map { "Classement : \($0)" } ?? "Résultat : \(resultat.classement)")
+            }
             if inscrit {
                 Image(systemName: "checkmark.seal.fill").font(.system(size: 22)).foregroundStyle(Theme.accent)
                     .accessibilityLabel("Inscrit")

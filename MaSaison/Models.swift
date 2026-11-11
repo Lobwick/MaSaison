@@ -224,6 +224,17 @@ struct Inscription: Identifiable, Hashable {
     var estTerminee: Bool { dateFin.map { $0 < Calendar.current.startOfDay(for: Date()) } ?? false }
 }
 
+/// Ligne de `/manifestations/resultats` : « 10 » (place), « AB » (abandon), « NP » (non partant), « Absent(e) »…
+struct Resultat: Hashable {
+    let manifestationID: Int?
+    let libelle: String
+    let date: Date?
+    let classement: String
+
+    var place: Int? { Int(classement) }
+    var texteCourt: String { place.map { $0 == 1 ? "1er" : "\($0)e" } ?? classement }
+}
+
 /// Fiche profil lue dans le HTML de `/infos`.
 struct Profil {
     var nom = ""

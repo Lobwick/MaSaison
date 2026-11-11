@@ -19,7 +19,7 @@ struct ManifestationDetailView: View {
     @State private var erreurAgenda: String?
 
     var body: some View {
-        ScrollView {
+        ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: 22) {
                 entete
 
@@ -53,6 +53,7 @@ struct ManifestationDetailView: View {
                 if let errorMessage { Text(errorMessage).font(.barlow(14)).foregroundStyle(Theme.danger) }
             }
             .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 40)
+            .containerRelativeFrame(.horizontal)
         }
         .screenBackground()
         .toolbarBackground(.hidden, for: .navigationBar)
