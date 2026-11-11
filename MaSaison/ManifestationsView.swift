@@ -97,7 +97,9 @@ struct ManifestationsView: View {
             FiltresPanel(departements: $departementIDs, sports: $sportCodes)
         }
         .refreshable { await load() }
+        // retour d'une fiche : l'inscription a pu changer
         .onAppear {
+            Task { await chargerInscriptions() }
             // filtres par défaut du profil, appliqués une fois à l'ouverture
             if !filtresInitialises { departementIDs = store.departementsParDefaut; sportCodes = store.sportsParDefaut; filtresInitialises = true }
         }
@@ -127,16 +129,32 @@ struct ManifestationsView: View {
         .buttonStyle(.plain)
     }
 
+    /// Département du lieu d'après le code postal (« 59 » pour 59000, « 971 » pour 97100) ; vrai si inconnu.
+    private static func dansDepartements(_ m: Manifestation, _ numeros: Set<String>) -> Bool {
+        guard let cp = m.adresse?.codePostalFr, cp.count == 5, cp.allSatisfy(\.isNumber) else { return true }
+        let outreMer = cp.hasPrefix("97") || cp.hasPrefix("98")
+        return numeros.contains(String(cp.prefix(outreMer ? 3 : 2).drop { $0 == "0" }))
+    }
+
+    /// Courses où tu es déjà inscrit (badge dans la liste).
+    private func chargerInscriptions() async {
+        if let inscriptions = try? await auth.withSession({ try await auth.client.fetchInscriptions() }) {
+            inscritIDs = Set(inscriptions.map(\.manifestationID))
+        }
+    }
+
     private func load() async {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
         do {
-            // courses où tu es déjà inscrit (icône dans la liste)
-            inscritIDs = Set(((try? await auth.withSession { try await auth.client.fetchInscriptions() }) ?? []).map(\.manifestationID))
-            manifestations = try await auth.withSession {
+            await chargerInscriptions()
+            let trouvees = try await auth.withSession {
                 try await auth.client.searchManifestations(libelle: recherche, structureIDs: departementIDs.sorted(), disciplineCodes: sportCodes.sorted())
             }
+            // le site filtre sur la structure organisatrice : on garde seulement celles dont le lieu est dans le département
+            let numeros = Set(store.departements.filter { departementIDs.contains($0.id) }.map(\.numero))
+            manifestations = numeros.isEmpty ? trouvees : trouvees.filter { Self.dansDepartements($0, numeros) }
         } catch is CancellationError {
         } catch let error as URLError where error.code == .cancelled {
         } catch {
