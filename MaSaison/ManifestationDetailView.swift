@@ -17,6 +17,7 @@ struct ManifestationDetailView: View {
     @State private var fichierGPX: URL?
     @State private var autresOuvert = false
     @State private var erreurAgenda: String?
+    @State private var meteo: Meteo?
 
     var body: some View {
         ScrollView(.vertical) {
@@ -38,6 +39,8 @@ struct ManifestationDetailView: View {
                         ForEach(miennes, id: \.course.id) { carteCourse($0.course, groupe: $0.groupe) }
                     }
                 }
+
+                if let meteo { meteoCarte(meteo) }
 
                 lieuEtTrace
 
@@ -77,6 +80,7 @@ struct ManifestationDetailView: View {
     private var autres: [(groupe: String, course: ConfigNiveau)] { toutes.filter { !cartes.correspond(course: $0.course, in: manifestation) } }
 
     private func charger() async {
+        async let prevision: Meteo? = chargerMeteo()
         do {
             groupes = try await auth.withSession { try await auth.client.fetchGroupes(manifestationID: manifestation.id) }
         } catch {
@@ -87,6 +91,37 @@ struct ManifestationDetailView: View {
             let fichier = FileManager.default.temporaryDirectory.appendingPathComponent("\(manifestation.libelle.capitalized).gpx")
             if (try? data.write(to: fichier)) != nil { fichierGPX = fichier }
         }
+        meteo = await prevision
+    }
+
+    private func chargerMeteo() async -> Meteo? {
+        guard let debut = manifestation.debutDate, let c = manifestation.adresse?.coordinate else { return nil }
+        return await MeteoService.prevision(latitude: c.latitude, longitude: c.longitude, jour: debut)
+    }
+
+    // MARK: météo
+
+    private func meteoCarte(_ m: Meteo) -> some View {
+        func degres(_ t: Double) -> String { "\(Int(t.rounded()))°" }
+        return VStack(alignment: .leading, spacing: 12) {
+            Eyebrow("MÉTÉO")
+            HStack(spacing: 14) {
+                Image(systemName: m.symbole).symbolRenderingMode(.multicolor).font(.system(size: 38))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(m.libelle).font(.barlow(16, .semibold)).foregroundStyle(Theme.text)
+                    Text("\(degres(m.tempMin)) / \(degres(m.tempMax))").font(.cond(30)).foregroundStyle(Theme.text)
+                }
+                Spacer()
+            }
+            HStack(spacing: 10) {
+                tuile("PLUIE", m.probaPluie.map { "\($0)" } ?? m.pluieMm.formatted(.number.precision(.fractionLength(1))),
+                      suffixe: m.probaPluie != nil ? "%" : "mm")
+                tuile("VENT", "\(Int(m.ventKmh.rounded()))", suffixe: "km/h")
+            }
+            Text("Prévision pour le jour de l'épreuve · Open-Meteo").font(.barlow(12)).foregroundStyle(Theme.muted)
+        }
+        .card(radius: 24, padding: 16)
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: en-tête
