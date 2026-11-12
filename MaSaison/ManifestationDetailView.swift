@@ -18,6 +18,8 @@ struct ManifestationDetailView: View {
     @State private var autresOuvert = false
     @State private var erreurAgenda: String?
     @State private var meteo: Meteo?
+    @State private var mentionMeteo: MeteoAttribution?
+    @Environment(\.colorScheme) private var schema
 
     var body: some View {
         ScrollView(.vertical) {
@@ -81,6 +83,7 @@ struct ManifestationDetailView: View {
 
     private func charger() async {
         async let prevision: Meteo? = chargerMeteo()
+        async let mention: MeteoAttribution? = MeteoService.attribution()
         do {
             groupes = try await auth.withSession { try await auth.client.fetchGroupes(manifestationID: manifestation.id) }
         } catch {
@@ -92,6 +95,7 @@ struct ManifestationDetailView: View {
             if (try? data.write(to: fichier)) != nil { fichierGPX = fichier }
         }
         meteo = await prevision
+        if meteo != nil { mentionMeteo = await mention }
     }
 
     private func chargerMeteo() async -> Meteo? {
@@ -114,11 +118,21 @@ struct ManifestationDetailView: View {
                 Spacer()
             }
             HStack(spacing: 10) {
-                tuile("PLUIE", m.probaPluie.map { "\($0)" } ?? m.pluieMm.formatted(.number.precision(.fractionLength(1))),
-                      suffixe: m.probaPluie != nil ? "%" : "mm")
+                tuile("PLUIE", "\(m.probaPluie)", suffixe: "%")
                 tuile("VENT", "\(Int(m.ventKmh.rounded()))", suffixe: "km/h")
             }
-            Text("Prévision pour le jour de l'épreuve · Open-Meteo").font(.barlow(12)).foregroundStyle(Theme.muted)
+            HStack(spacing: 10) {
+                Text("Prévision pour le jour de l'épreuve").font(.barlow(12)).foregroundStyle(Theme.muted)
+                Spacer()
+                if let mention = mentionMeteo {
+                    VStack(alignment: .trailing, spacing: 2) {
+                        AsyncImage(url: schema == .dark ? mention.logoSombre : mention.logoClair) { $0.resizable().scaledToFit() } placeholder: { Color.clear }
+                            .frame(height: 14)
+                        Link("Autres sources de données", destination: mention.mentionsLegales)
+                            .font(.barlow(11)).foregroundStyle(Theme.muted)
+                    }
+                }
+            }
         }
         .card(radius: 24, padding: 16)
         .accessibilityElement(children: .combine)

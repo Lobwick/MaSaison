@@ -20,7 +20,7 @@ Le lieu d'une manifestation est affiché avec Plans d'Apple (MapKit). L'applicat
 
 ## Météo
 
-Quand l'épreuve a lieu dans les 16 prochains jours, l'application demande la prévision du jour au service gratuit Open-Meteo. Seules les coordonnées du lieu de la manifestation et la date sont envoyées, jamais ton identité ni ta position.
+Quand l'épreuve a lieu dans les 10 prochains jours, l'application demande la prévision du jour au service Apple WeatherKit. Seules les coordonnées du lieu de la manifestation et la date sont envoyées, jamais ton identité ni ta position.
 
 ## Inscription et paiement
 
