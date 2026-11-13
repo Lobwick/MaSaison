@@ -17,10 +17,16 @@ struct ManifestationDetailView: View {
     @State private var fichierGPX: URL?
     @State private var autresOuvert = false
     @State private var erreurAgenda: String?
+    @State private var meteo: Meteo?
+    @State private var erreurMeteo: String?
+    @State private var traceCharge = false
+    @State private var meteoCharge = false
+    @State private var mentionMeteo: MeteoAttribution?
+    @Environment(\.colorScheme) private var schema
 
     var body: some View {
         ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: 22) {
+            LazyVStack(alignment: .leading, spacing: 22) {
                 entete
 
                 if !miennes.isEmpty { AstuceView(tip: AppTips.detail) }
@@ -38,6 +44,8 @@ struct ManifestationDetailView: View {
                         ForEach(miennes, id: \.course.id) { carteCourse($0.course, groupe: $0.groupe) }
                     }
                 }
+
+                if meteoDisponible { meteoSection }
 
                 lieuEtTrace
 
@@ -60,7 +68,10 @@ struct ManifestationDetailView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+        // trois chargements indépendants, lancés dès l'ouverture : aucun n'attend les autres
         .task { await charger() }
+        .task { await chargerTrace() }
+        .task { await chargerMeteo() }
     }
 
     // MARK: données
@@ -82,11 +93,88 @@ struct ManifestationDetailView: View {
         } catch {
             errorMessage = error.localizedDescription
         }
-        if let url = manifestation.gpxURL, let data = try? await auth.client.download(url) {
-            trace = GPXTrack.parse(data)
-            let fichier = FileManager.default.temporaryDirectory.appendingPathComponent("\(manifestation.libelle.capitalized).gpx")
-            if (try? data.write(to: fichier)) != nil { fichierGPX = fichier }
+    }
+
+    /// Tracé GPX : téléchargé en parallèle à l'ouverture ; la carte et le profil se mettent à jour à l'arrivée.
+    private func chargerTrace() async {
+        guard !traceCharge else { return }
+        traceCharge = true
+        guard let url = manifestation.gpxURL, let data = try? await auth.client.download(url) else { return }
+        trace = GPXTrack.parse(data)
+        let fichier = FileManager.default.temporaryDirectory.appendingPathComponent("\(manifestation.libelle.capitalized).gpx")
+        if (try? data.write(to: fichier)) != nil { fichierGPX = fichier }
+    }
+
+    /// Météo : demandée en parallèle à l'ouverture ; la carte se met à jour à l'arrivée.
+    private func chargerMeteo() async {
+        guard !meteoCharge else { return }
+        meteoCharge = true
+        guard let debut = manifestation.debutDate else { erreurMeteo = MeteoDiagnostic.dateIllisible(manifestation.dateDebut).localizedDescription; return }
+        guard let c = manifestation.adresse?.coordinate else { erreurMeteo = MeteoDiagnostic.pasDeCoordonnees.localizedDescription; return }
+        do {
+            meteo = try await MeteoService.prevision(latitude: c.latitude, longitude: c.longitude, jour: debut)
+            if meteo != nil { mentionMeteo = await MeteoService.attribution() }
+        } catch {
+            erreurMeteo = "\(error.localizedDescription)\n\(String(describing: error))"
         }
+    }
+
+    // MARK: météo
+
+    private var meteoDisponible: Bool {
+        guard let debut = manifestation.debutDate, manifestation.adresse?.coordinate != nil else { return false }
+        return MeteoService.dansHorizon(debut)
+    }
+
+    @ViewBuilder
+    private var meteoSection: some View {
+        Group {
+            if let meteo {
+                meteoCarte(meteo)
+            } else if let erreurMeteo {
+                VStack(alignment: .leading, spacing: 6) {
+                    Eyebrow("MÉTÉO")
+                    Text("Météo indisponible").font(.barlow(15, .semibold)).foregroundStyle(Theme.textSoft)
+                    Text(erreurMeteo).font(.barlow(12)).foregroundStyle(Theme.muted).textSelection(.enabled)
+                }
+                .card(radius: 24, padding: 16)
+            } else {
+                ProgressView().frame(maxWidth: .infinity, minHeight: 150)
+            }
+        }
+    }
+
+    private func meteoCarte(_ m: Meteo) -> some View {
+        func degres(_ t: Double) -> String { "\(Int(t.rounded()))°" }
+        return VStack(alignment: .leading, spacing: 12) {
+            Eyebrow("MÉTÉO")
+            HStack(spacing: 14) {
+                Image(systemName: m.symbole).symbolRenderingMode(.multicolor).font(.system(size: 38))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(m.libelle).font(.barlow(16, .semibold)).foregroundStyle(Theme.text)
+                    Text("\(degres(m.tempMin)) / \(degres(m.tempMax))").font(.cond(30)).foregroundStyle(Theme.text)
+                }
+                Spacer()
+            }
+            HStack(spacing: 10) {
+                tuile("PLUIE", "\(m.probaPluie)", suffixe: "%")
+                tuile("VENT", "\(Int(m.ventKmh.rounded()))", suffixe: "km/h")
+            }
+            HStack(spacing: 10) {
+                Text("Prévision pour le jour de l'épreuve").font(.barlow(12)).foregroundStyle(Theme.muted)
+                Spacer()
+                if let mention = mentionMeteo {
+                    VStack(alignment: .trailing, spacing: 2) {
+                        AsyncImage(url: schema == .dark ? mention.logoSombre : mention.logoClair) { $0.resizable().scaledToFit() } placeholder: { Color.clear }
+                            .frame(height: 14)
+                        Link("Autres sources de données", destination: mention.mentionsLegales)
+                            .font(.barlow(11)).foregroundStyle(Theme.muted)
+                    }
+                }
+            }
+        }
+        .card(radius: 24, padding: 16)
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: en-tête
@@ -446,5 +534,15 @@ private extension MKMapRect {
             rect = rect.union(MKMapRect(x: p.x, y: p.y, width: 0, height: 0))
         }
         self = rect
+    }
+}
+
+private enum MeteoDiagnostic: LocalizedError {
+    case dateIllisible(String), pasDeCoordonnees
+    var errorDescription: String? {
+        switch self {
+        case .dateIllisible(let d): "Date de début illisible : « \(d) »."
+        case .pasDeCoordonnees: "Pas de coordonnées exploitables pour ce lieu."
+        }
     }
 }

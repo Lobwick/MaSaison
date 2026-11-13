@@ -18,6 +18,10 @@ L'application demande un accès en **écriture seule** à ton calendrier, pour y
 
 Le lieu d'une manifestation est affiché avec Plans d'Apple (MapKit). L'application n'utilise pas ta position.
 
+## Météo
+
+Quand l'épreuve a lieu dans les 10 prochains jours, l'application demande la prévision du jour au service Apple WeatherKit. Seules les coordonnées du lieu de la manifestation et la date sont envoyées, jamais ton identité ni ta position.
+
 ## Inscription et paiement
 
 Une inscription n'est envoyée au site de l'UFOLEP que lorsque tu la confirmes dans l'application. Le paiement se fait sur la page de paiement du site, affichée dans l'application : tu saisis ta carte bancaire sur la page de la banque. **L'application et son auteur n'ont jamais accès à tes données de carte.**
