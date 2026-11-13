@@ -33,6 +33,7 @@ struct ManifestationDetailView: View {
     @State private var documentEnCours: URL?
     @State private var erreurDocument: String?
     @State private var correspondant: Correspondant?
+    @State private var photoProfil: UIImage?
     @Environment(\.colorScheme) private var schema
 
     var body: some View {
@@ -81,6 +82,7 @@ struct ManifestationDetailView: View {
         .task { await chargerTrace() }
         .task { await chargerMeteo() }
         .task { correspondant = try? await auth.withSession { try await auth.client.fetchCorrespondant(manifestationID: manifestation.id) } }
+        .task { await chargerPhotoProfil() }
         // déjà autorisé : le trajet se calcule sans rien demander ; sinon un bouton propose de le faire
         .task { if TrajetService.autorise { await calculerTrajet() } }
         .quickLookPreview($apercu)
@@ -297,30 +299,17 @@ struct ManifestationDetailView: View {
             Button {
                 dismiss()
             } label: {
-                Label("Courses", systemImage: "chevron.left")
-                    .font(.barlow(16, .semibold))
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(Theme.accent)
             }
             .buttonStyle(.plain)
+            Text("DÉTAIL")
+                .font(.cond(34))
+                .foregroundStyle(Theme.text)
 
             Spacer()
-
-            HStack(spacing: 10) {
-                ShareLink(item: manifestation.libelle) {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Theme.textSoft)
-                        .frame(width: 36, height: 36)
-                        .background(Theme.surface2, in: Circle())
-                        .overlay(Circle().stroke(Theme.line, lineWidth: 1))
-                }
-                Image(systemName: "bell")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Theme.textSoft)
-                    .frame(width: 36, height: 36)
-                    .background(Theme.surface2, in: Circle())
-                    .overlay(Circle().stroke(Theme.line, lineWidth: 1))
-            }
+            TopRightProfileActions(photo: photoProfil, accent: Theme.accent)
         }
         .padding(.top, -4)
     }
@@ -343,6 +332,18 @@ struct ManifestationDetailView: View {
             s += " → " + Date.fr("EEE d MMMM").string(from: fin).uppercased()
         }
         return s
+    }
+
+    private func chargerPhotoProfil() async {
+        do {
+            let profil = try await auth.withSession { try await auth.client.fetchProfil() }
+            guard let url = profil.photoURL else { return }
+            if let data = try? await auth.withSession({ try await auth.client.download(url) }) {
+                photoProfil = UIImage(data: data)
+            }
+        } catch {
+            photoProfil = nil
+        }
     }
 
     // MARK: statut d'inscription

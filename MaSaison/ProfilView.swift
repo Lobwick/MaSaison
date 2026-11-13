@@ -47,35 +47,33 @@ struct ProfilView: View {
     // MARK: en-tête
 
     private var entete: some View {
-        HStack(spacing: 16) {
-            Group {
-                if let photo {
-                    Image(uiImage: photo).resizable().scaledToFill()
-                        .accessibilityLabel("Photo de profil")
-                } else {
-                    Text(initiales).font(.cond(30)).foregroundStyle(Theme.text)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 10) {
+                Text("PROFIL")
+                    .font(.cond(34))
+                    .foregroundStyle(Theme.text)
+                Spacer()
+                TopRightProfileActions(photo: photo, accent: Theme.accent)
+            }
+            HStack(spacing: 16) {
+                Group {
+                    if let photo {
+                        Image(uiImage: photo).resizable().scaledToFill()
+                            .accessibilityLabel("Photo de profil")
+                    } else {
+                        Text(initiales).font(.cond(30)).foregroundStyle(Theme.text)
+                    }
                 }
-            }
-            .frame(width: 76, height: 76).background(Theme.surface2).clipShape(Circle())
-            .overlay(Circle().stroke(Theme.accent, lineWidth: 3))
-            VStack(alignment: .leading, spacing: 4) {
-                Text(nomAffiche).font(.cond(34)).textCase(.uppercase).foregroundStyle(Theme.text).lineLimit(2)
-                if let carte = cartes.cartesActives.first {
-                    Text([carte.comite, carte.club].filter { !$0.isEmpty }.joined(separator: " · ")).font(.barlow(14)).foregroundStyle(Theme.muted)
+                .frame(width: 76, height: 76).background(Theme.surface2).clipShape(Circle())
+                .overlay(Circle().stroke(Theme.accent, lineWidth: 3))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(nomAffiche).font(.cond(34)).textCase(.uppercase).foregroundStyle(Theme.text).lineLimit(2)
+                    if let carte = cartes.cartesActives.first {
+                        Text([carte.comite, carte.club].filter { !$0.isEmpty }.joined(separator: " · ")).font(.barlow(14)).foregroundStyle(Theme.muted)
+                    }
                 }
+                Spacer(minLength: 8)
             }
-            Spacer(minLength: 8)
-            NavigationLink {
-                ReglagesManifestationsView()
-            } label: {
-                Image(systemName: "slider.horizontal.3")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(Theme.textSoft)
-                    .frame(width: 40, height: 40)
-                    .background(Theme.surface2, in: Circle())
-                    .overlay(Circle().stroke(Theme.line, lineWidth: 1))
-            }
-            .buttonStyle(.plain)
         }
         .padding(.top, -4)
     }

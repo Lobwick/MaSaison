@@ -91,41 +91,16 @@ struct MesInscriptionsView: View {
 
     private var enteteAccueil: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 10) {
-                avatarAccueil
+            HStack(alignment: .top, spacing: 10) {
+                Text("ACCUEIL")
+                    .font(.cond(34))
+                    .foregroundStyle(Theme.text)
                 Spacer()
-                Image(systemName: "bell")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Theme.textSoft)
-                    .frame(width: 36, height: 36)
-                    .background(Theme.surface2, in: Circle())
-                    .overlay(Circle().stroke(Theme.line, lineWidth: 1))
+                TopRightProfileActions(photo: photo, accent: homeAccent)
             }
             .padding(.top, -10)
-            HStack(alignment: .top) {
-                Text("ACCUEIL")
-                .font(.cond(34))
-                .foregroundStyle(Theme.text)
-                Spacer()
-            }
             Rectangle().fill(Theme.line).frame(height: 1)
         }
-    }
-
-    private var avatarAccueil: some View {
-        Group {
-            if let photo {
-                Image(uiImage: photo).resizable().scaledToFill()
-            } else {
-                Image(systemName: "person.crop.circle.fill")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(homeAccent.opacity(0.85))
-            }
-        }
-        .frame(width: 36, height: 36)
-        .background(homeAccent.opacity(0.08), in: Circle())
-        .clipShape(Circle())
-        .overlay(Circle().stroke(Theme.line, lineWidth: 1))
     }
 
     private var segmentControl: some View {

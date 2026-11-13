@@ -53,6 +53,7 @@ struct ManifestationsView: View {
     @State private var hauteurViewportCalendrier: CGFloat = 0
     @State private var prechargementCalendrierEnCours = false
     @State private var filtreStatut: FiltreStatut = .tous
+    @State private var photo: UIImage?
 
     private struct Requete: Equatable {
         var departementIDs: Set<Int>
@@ -96,7 +97,12 @@ struct ManifestationsView: View {
                         if vueSelectionnee == .liste && !afficherSelecteurVue {
                             enteteCoursesRecherche
                         } else {
-                            Text(titrePage).pageTitle()
+                            HStack(alignment: .top, spacing: 10) {
+                                Text(titrePage).pageTitle()
+                                Spacer()
+                                TopRightProfileActions(photo: photo, accent: Theme.accent)
+                            }
+                            .padding(.top, -4)
 
                             HStack(spacing: 10) {
                                 if afficherRecherche {
@@ -200,6 +206,7 @@ struct ManifestationsView: View {
             guard !Task.isCancelled else { return }
             await load()
         }
+        .task { await chargerPhotoProfil() }
         .onAppear { majVisibiliteTabBar() }
         .onDisappear { hideFloatingTabBar = false }
     }
@@ -262,28 +269,19 @@ struct ManifestationsView: View {
 
     private var enteteCoursesRecherche: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
-                Image(systemName: "person.crop.circle.fill")
-                    .font(.system(size: 34))
-                    .foregroundStyle(Theme.accent.opacity(0.9))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Courses").pageTitle()
-                    HStack(spacing: 6) {
-                        Circle().fill(Theme.accent).frame(width: 6, height: 6)
-                        Text("Saison UFOLEP \(saisonCourses)")
-                            .font(.barlow(12, .semibold))
-                            .foregroundStyle(Theme.accent)
-                    }
-                }
+            HStack(alignment: .top, spacing: 10) {
+                Text("COURSES").pageTitle()
                 Spacer()
-                Image(systemName: "bell")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(Theme.textSoft)
-                    .frame(width: 40, height: 40)
-                    .background(Theme.surface2, in: Circle())
-                    .overlay(Circle().stroke(Theme.line, lineWidth: 1))
+                TopRightProfileActions(photo: photo, accent: Theme.accent)
             }
             .padding(.top, -4)
+
+            HStack(spacing: 6) {
+                Circle().fill(Theme.accent).frame(width: 6, height: 6)
+                Text("Saison UFOLEP \(saisonCourses)")
+                    .font(.barlow(12, .semibold))
+                    .foregroundStyle(Theme.accent)
+            }
 
             HStack(spacing: 10) {
                 HStack(spacing: 10) {
@@ -321,6 +319,18 @@ struct ManifestationsView: View {
                 }
                 .padding(.horizontal, 1)
             }
+        }
+    }
+
+    private func chargerPhotoProfil() async {
+        do {
+            let profil = try await auth.withSession { try await auth.client.fetchProfil() }
+            guard let url = profil.photoURL else { return }
+            if let data = try? await auth.withSession({ try await auth.client.download(url) }) {
+                photo = UIImage(data: data)
+            }
+        } catch {
+            photo = nil
         }
     }
 

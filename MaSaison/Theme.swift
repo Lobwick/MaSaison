@@ -133,7 +133,37 @@ extension View {
 
     /// Titre de page style Apple.
     func pageTitle() -> some View {
-        font(.system(size: 56, weight: .bold, design: .rounded)).foregroundStyle(Theme.text)
+        font(.cond(34)).textCase(.uppercase).foregroundStyle(Theme.text)
+    }
+}
+
+/// Actions d'en-tête standardisées : notifications puis profil.
+struct TopRightProfileActions: View {
+    var photo: UIImage?
+    var accent: Color = Theme.accent
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "bell")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Theme.textSoft)
+                .frame(width: 36, height: 36)
+                .background(Theme.surface2, in: Circle())
+                .overlay(Circle().stroke(Theme.line, lineWidth: 1))
+            Group {
+                if let photo {
+                    Image(uiImage: photo).resizable().scaledToFill()
+                } else {
+                    Image(systemName: "person.crop.circle.fill")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(accent.opacity(0.9))
+                }
+            }
+            .frame(width: 36, height: 36)
+            .background(accent.opacity(0.08), in: Circle())
+            .clipShape(Circle())
+            .overlay(Circle().stroke(Theme.line, lineWidth: 1))
+        }
     }
 }
 
