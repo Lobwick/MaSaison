@@ -82,13 +82,15 @@ enum AgendaService {
         "\(manifestation.libelle.capitalized) – \(course.niveau.libelle)"
     }
 
-    /// Retrouve l'événement par son titre et son horaire (l'identifiant n'est pas toujours rendu en écriture seule).
-    private static func trouver(dans store: EKEventStore, manifestation: Manifestation, course: ConfigNiveau, creneau: Creneau) -> EKEvent? {
+    /// Retrouve les événements par leur titre et leur horaire (l'identifiant n'est pas toujours rendu en écriture seule).
+    /// Plusieurs copies peuvent exister (ajouts répétés) : on les renvoie toutes.
+    private static func trouver(dans store: EKEventStore, manifestation: Manifestation, course: ConfigNiveau, creneau: Creneau) -> [EKEvent] {
         let titre = titre(manifestation: manifestation, course: course)
         let predicat = store.predicateForEvents(withStart: creneau.debut.addingTimeInterval(-86_400),
                                                 end: creneau.fin.addingTimeInterval(86_400), calendars: nil)
         let candidats = store.events(matching: predicat).filter { $0.title == titre }
-        return candidats.first { abs($0.startDate.timeIntervalSince(creneau.debut)) < 60 } ?? candidats.first
+        let memeHeure = candidats.filter { abs($0.startDate.timeIntervalSince(creneau.debut)) < 60 }
+        return memeHeure.isEmpty ? candidats : memeHeure
     }
 
     /// « Trajet : 35 min en voiture · 28 km, partir vers 11:10 (calculé le 13 nov. à 10:32) ».
@@ -100,27 +102,41 @@ enum AgendaService {
         return "Trajet : \(trajet.texte), partir vers \(partir.formatted(heure)) (calculé le \(Date().formatted(calcule)))"
     }
 
-    /// Remplace la ligne « Trajet : » de l'événement déjà créé, sans toucher au reste des notes.
+    struct MiseAJour {
+        let identifiant: String
+        let nombre: Int
+        let calendriers: [String]
+    }
+
+    /// Remplace la ligne « Trajet : » des événements déjà créés, sans toucher au reste des notes.
     /// Retrouver l'événement demande l'accès complet au calendrier : il n'est demandé qu'à ce moment-là.
-    @discardableResult
     static func mettreAJourTrajet(identifiant: String, manifestation: Manifestation, course: ConfigNiveau,
-                                  echauffementMinutes: Int, trajet: Trajet) async throws -> String {
+                                  echauffementMinutes: Int, trajet: Trajet) async throws -> MiseAJour {
         guard let creneau = creneau(manifestation: manifestation, course: course, echauffementMinutes: echauffementMinutes) else {
             throw AgendaError.horairesManquants
         }
         let store = EKEventStore()
         guard try await store.requestFullAccessToEvents() else { throw AgendaError.accesRefuse }
-        let parIdentifiant = identifiant.isEmpty ? nil : store.event(withIdentifier: identifiant)
-        guard let event = parIdentifiant ?? trouver(dans: store, manifestation: manifestation, course: course, creneau: creneau) else {
-            throw AgendaError.evenementIntrouvable
-        }
 
-        var lignes = (event.notes ?? "").components(separatedBy: "\n").filter { !$0.hasPrefix("Trajet :") }
-        while lignes.last?.trimmingCharacters(in: .whitespaces).isEmpty == true { lignes.removeLast() }
-        lignes.append(ligneTrajet(trajet, creneau: creneau))
-        event.notes = lignes.joined(separator: "\n")
-        try store.save(event, span: .thisEvent)
-        return event.eventIdentifier ?? identifiant
+        var evenements = trouver(dans: store, manifestation: manifestation, course: course, creneau: creneau)
+        if !identifiant.isEmpty, let direct = store.event(withIdentifier: identifiant),
+           !evenements.contains(where: { $0.eventIdentifier == direct.eventIdentifier }) {
+            evenements.append(direct)
+        }
+        guard !evenements.isEmpty else { throw AgendaError.evenementIntrouvable }
+
+        let ligne = ligneTrajet(trajet, creneau: creneau)
+        for event in evenements {
+            var lignes = (event.notes ?? "").components(separatedBy: "\n").filter { !$0.hasPrefix("Trajet :") }
+            while lignes.last?.trimmingCharacters(in: .whitespaces).isEmpty == true { lignes.removeLast() }
+            lignes.append(ligne)
+            event.notes = lignes.joined(separator: "\n")
+            try store.save(event, span: .thisEvent, commit: false)
+        }
+        try store.commit()
+        return MiseAJour(identifiant: evenements[0].eventIdentifier ?? identifiant,
+                         nombre: evenements.count,
+                         calendriers: Array(Set(evenements.map { $0.calendar.title })).sorted())
     }
 
     private static func date(_ jour: String, _ heure: String?) -> Date? {

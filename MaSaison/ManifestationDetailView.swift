@@ -24,6 +24,7 @@ struct ManifestationDetailView: View {
     @State private var trajet: Trajet?
     @State private var trajetEnCours = false
     @State private var infoAgenda: String?
+    @State private var erreurTrajet: String?
     @State private var majTrajetEnCours = false
     @State private var mentionMeteo: MeteoAttribution?
     @Environment(\.colorScheme) private var schema
@@ -130,7 +131,12 @@ struct ManifestationDetailView: View {
         guard let c = manifestation.adresse?.coordinate, !trajetEnCours else { return }
         trajetEnCours = true
         defer { trajetEnCours = false }
-        trajet = await TrajetService.trajet(versLatitude: c.latitude, longitude: c.longitude)
+        do {
+            trajet = try await TrajetService.trajet(versLatitude: c.latitude, longitude: c.longitude)
+            erreurTrajet = nil
+        } catch {
+            erreurTrajet = error.localizedDescription
+        }
     }
 
     @ViewBuilder
@@ -140,6 +146,8 @@ struct ManifestationDetailView: View {
                 .font(.barlow(13, .semibold)).foregroundStyle(Theme.accent).padding(.top, 4)
         } else if trajetEnCours {
             ProgressView().controlSize(.small).padding(.top, 4)
+        } else if let erreurTrajet {
+            Text(erreurTrajet).font(.barlow(12)).foregroundStyle(Theme.danger).padding(.top, 4)
         } else if TrajetService.nonDemande, manifestation.adresse?.coordinate != nil {
             VStack(alignment: .leading, spacing: 2) {
                 Button { Task { await calculerTrajet() } } label: {
@@ -381,6 +389,10 @@ struct ManifestationDetailView: View {
                 if trajet == nil, TrajetService.autorise { await calculerTrajet() }
                 let id = try await AgendaService.ajouter(manifestation: manifestation, course: course, echauffementMinutes: echauffement, trajet: trajet)
                 agenda.enregistrer(manifestation: manifestation.id, course: course.id, identifiant: id)
+                if trajet == nil {
+                    infoAgenda = "Événement créé sans temps de trajet. "
+                        + (erreurTrajet ?? "Touche « Mettre à jour le temps de trajet » pour l'ajouter (la position est demandée une seule fois).")
+                }
             } catch {
                 erreurAgenda = error.localizedDescription
             }
@@ -396,16 +408,20 @@ struct ManifestationDetailView: View {
         majTrajetEnCours = true
         Task {
             defer { majTrajetEnCours = false }
-            guard let nouveau = await TrajetService.trajet(versLatitude: c.latitude, longitude: c.longitude) else {
-                erreurAgenda = "Position indisponible : autorise la localisation dans Réglages pour calculer le trajet."
+            let nouveau: Trajet
+            do {
+                nouveau = try await TrajetService.trajet(versLatitude: c.latitude, longitude: c.longitude)
+            } catch {
+                erreurAgenda = error.localizedDescription
                 return
             }
             trajet = nouveau
             do {
-                let id = try await AgendaService.mettreAJourTrajet(identifiant: identifiant, manifestation: manifestation, course: course,
-                                                                  echauffementMinutes: echauffement, trajet: nouveau)
-                if !id.isEmpty { agenda.enregistrer(manifestation: manifestation.id, course: course.id, identifiant: id) }
-                infoAgenda = "Trajet mis à jour : \(nouveau.texte)."
+                let maj = try await AgendaService.mettreAJourTrajet(identifiant: identifiant, manifestation: manifestation, course: course,
+                                                                   echauffementMinutes: echauffement, trajet: nouveau)
+                if !maj.identifiant.isEmpty { agenda.enregistrer(manifestation: manifestation.id, course: course.id, identifiant: maj.identifiant) }
+                let lieu = maj.calendriers.joined(separator: ", ")
+                infoAgenda = "Trajet mis à jour : \(nouveau.texte). \(maj.nombre) événement\(maj.nombre > 1 ? "s" : "") modifié\(maj.nombre > 1 ? "s" : "") (calendrier « \(lieu) »)."
             } catch AgendaError.evenementIntrouvable {
                 agenda.retirer(manifestation: manifestation.id, course: course.id)
                 erreurAgenda = AgendaError.evenementIntrouvable.localizedDescription
