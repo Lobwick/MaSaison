@@ -1,5 +1,6 @@
 import Charts
 import MapKit
+import QuickLook
 import SwiftUI
 
 /// Détail d'une manifestation : statut d'inscription, mes courses, lieu et tracé, autres courses.
@@ -27,6 +28,10 @@ struct ManifestationDetailView: View {
     @State private var erreurTrajet: String?
     @State private var majTrajetEnCours = false
     @State private var mentionMeteo: MeteoAttribution?
+    @State private var apercu: URL?
+    @State private var documentEnCours: URL?
+    @State private var erreurDocument: String?
+    @State private var correspondant: Correspondant?
     @Environment(\.colorScheme) private var schema
 
     var body: some View {
@@ -56,12 +61,9 @@ struct ManifestationDetailView: View {
 
                 if !miennes.isEmpty && !autres.isEmpty { autresCourses }
 
-                if let nom = manifestation.structure?.nom {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Eyebrow("ORGANISATEUR")
-                        Text(nom).font(.barlow(16)).foregroundStyle(Theme.text)
-                    }
-                }
+                if !manifestation.documentsPDF.isEmpty { documentsSection }
+
+                organisateurSection
 
                 if let errorMessage { Text(errorMessage).font(.barlow(14)).foregroundStyle(Theme.danger) }
             }
@@ -77,8 +79,75 @@ struct ManifestationDetailView: View {
         .task { await charger() }
         .task { await chargerTrace() }
         .task { await chargerMeteo() }
+        .task { correspondant = try? await auth.withSession { try await auth.client.fetchCorrespondant(manifestationID: manifestation.id) } }
         // déjà autorisé : le trajet se calcule sans rien demander ; sinon un bouton propose de le faire
         .task { if TrajetService.autorise { await calculerTrajet() } }
+        .quickLookPreview($apercu)
+    }
+
+    // MARK: documents et organisateur
+
+    private var documentsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Eyebrow("DOCUMENTS")
+            VStack(spacing: 0) {
+                ForEach(Array(manifestation.documentsPDF.enumerated()), id: \.offset) { _, doc in
+                    Button { Task { await ouvrir(doc.url, libelle: doc.libelle) } } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "doc.text").foregroundStyle(Theme.accent)
+                            Text(doc.libelle).font(.barlow(16, .semibold)).foregroundStyle(Theme.text)
+                            Spacer()
+                            if documentEnCours == doc.url { ProgressView().controlSize(.small) }
+                            else { Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(Theme.muted) }
+                        }
+                        .padding(.horizontal, 14).frame(minHeight: 48)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(documentEnCours != nil)
+                }
+            }
+            .card(padding: 4)
+            if let erreurDocument { Text(erreurDocument).font(.barlow(13)).foregroundStyle(Theme.danger) }
+        }
+    }
+
+    /// Télécharge le PDF avec la session du licencié puis l'ouvre dans l'aperçu QuickLook.
+    private func ouvrir(_ url: URL, libelle: String) async {
+        erreurDocument = nil
+        documentEnCours = url
+        defer { documentEnCours = nil }
+        do {
+            let data = try await auth.client.download(url)
+            let nom = "\(manifestation.libelle.capitalized) - \(libelle)".replacingOccurrences(of: "/", with: "-")
+            let fichier = FileManager.default.temporaryDirectory.appendingPathComponent("\(nom).pdf")
+            try data.write(to: fichier)
+            apercu = fichier
+        } catch {
+            erreurDocument = "Impossible d'ouvrir « \(libelle) » : \(error.localizedDescription)"
+        }
+    }
+
+    @ViewBuilder
+    private var organisateurSection: some View {
+        if let structure = manifestation.structure {
+            VStack(alignment: .leading, spacing: 10) {
+                Eyebrow("ORGANISATEUR")
+                Text(structure.nom).font(.barlow(16)).foregroundStyle(Theme.text)
+                if let nom = correspondant?.nomComplet {
+                    Text("Correspondant : \(nom)").font(.barlow(14)).foregroundStyle(Theme.muted)
+                }
+                if let correspondant, correspondant.telephoneURL != nil || correspondant.emailURL != nil {
+                    HStack(spacing: 10) {
+                        if let tel = correspondant.telephoneURL {
+                            Link(destination: tel) { Label("Appeler", systemImage: "phone") }.buttonStyle(OutlineButtonStyle())
+                        }
+                        if let mail = correspondant.emailURL {
+                            Link(destination: mail) { Label("Écrire", systemImage: "envelope") }.buttonStyle(OutlineButtonStyle())
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // MARK: données

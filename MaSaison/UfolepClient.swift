@@ -104,6 +104,21 @@ final class UfolepClient {
         try await searchManifestations(libelle: libelle, depuis: "01-01-2000").first { $0.id == id }
     }
 
+    /// Correspondant (mail et téléphone) : seulement dans la page de la fiche, dont la prop `:manifestation` embarque tout le JSON.
+    func fetchCorrespondant(manifestationID: Int) async throws -> Correspondant? {
+        struct Enveloppe: Decodable { let correspondants: [Correspondant]? }
+        let html = try await getHTML("manifestations/show/\(manifestationID)")
+        guard let debut = html.range(of: ":manifestation=\""),
+              let fin = html[debut.upperBound...].firstIndex(of: "\"") else { return nil }
+        let json = String(html[debut.upperBound..<fin])
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#039;", with: "'")
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+            .replacingOccurrences(of: "&amp;", with: "&")
+        return try JSONDecoder().decode(Enveloppe.self, from: Data(json.utf8)).correspondants?.first
+    }
+
     /// Inscriptions du licencié (à venir et passées).
     func fetchInscriptions() async throws -> [Inscription] {
         HTMLParsing.inscriptions(from: try await getHTML("manifestations/liste-inscriptions"))

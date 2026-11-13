@@ -4,6 +4,39 @@ struct Page<T: Decodable>: Decodable {
     let data: [T]
 }
 
+/// Correspondant de la manifestation (page « Informations générales » : mail et téléphone spécifiques à l'événement).
+struct Correspondant: Decodable {
+    let mailSpecifique: String?
+    let numSpecifique: String?
+    let personne: Personne?
+
+    struct Personne: Decodable {
+        let nom: String?
+        let prenom: String?
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case personne
+        case mailSpecifique = "mail_specifique"
+        case numSpecifique = "num_specifique"
+    }
+
+    var nomComplet: String? {
+        let n = [personne?.prenom, personne?.nom].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ")
+        return n.isEmpty ? nil : n.capitalized
+    }
+
+    var telephoneURL: URL? {
+        guard let t = numSpecifique?.filter({ $0.isNumber || $0 == "+" }), t.count >= 6, Set(t) != ["0"] else { return nil }
+        return URL(string: "tel:\(t)")
+    }
+
+    var emailURL: URL? {
+        guard let e = mailSpecifique?.trimmingCharacters(in: .whitespaces), e.contains("@") else { return nil }
+        return URL(string: "mailto:\(e)")
+    }
+}
+
 struct Manifestation: Decodable, Identifiable {
     let id: Int
     let libelle: String
@@ -38,6 +71,14 @@ struct Manifestation: Decodable, Identifiable {
         enum CodingKeys: String, CodingKey {
             case type
             case fileURL = "file_url"
+        }
+    }
+
+    /// Documents PDF (règlement, programme, affiche) : libellé du type + URL.
+    var documentsPDF: [(libelle: String, url: URL)] {
+        (documents ?? []).compactMap { d in
+            guard let f = d.fileURL, let url = URL(string: f), url.pathExtension.lowercased() == "pdf" else { return nil }
+            return (d.type?.libelle ?? d.type?.code?.capitalized ?? "Document", url)
         }
     }
 
