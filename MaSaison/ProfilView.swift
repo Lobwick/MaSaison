@@ -28,7 +28,7 @@ struct ProfilView: View {
                 Button("Se déconnecter") { auth.logout() }
                     .buttonStyle(PrimaryButtonStyle(danger: true))
             }
-            .padding(.horizontal, 20).padding(.top, 24).padding(.bottom, 120)
+            .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 120)
             .containerRelativeFrame(.horizontal)
         }
         .screenBackground()
@@ -77,6 +77,7 @@ struct ProfilView: View {
             }
             .buttonStyle(.plain)
         }
+        .padding(.top, -4)
     }
 
     /// « Monsieur MOULIN Felix » → « MOULIN Felix »

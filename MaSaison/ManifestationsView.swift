@@ -141,7 +141,7 @@ struct ManifestationsView: View {
                                 .onAppear { Task { await chargerSuite() } }
                         }
                     }
-                    .padding(.horizontal, 20).padding(.top, 24).padding(.bottom, 120)
+                    .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 120)
                     .containerRelativeFrame(.horizontal)
                 }
             }
@@ -283,6 +283,7 @@ struct ManifestationsView: View {
                     .background(Theme.surface2, in: Circle())
                     .overlay(Circle().stroke(Theme.line, lineWidth: 1))
             }
+            .padding(.top, -4)
 
             HStack(spacing: 10) {
                 HStack(spacing: 10) {
@@ -1393,26 +1394,7 @@ private struct CourseListRow: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            VStack(spacing: 4) {
-                Text(manifestation.debutDate.map { Date.fr("dd").string(from: $0) } ?? "—")
-                    .font(.cond(22, .semibold))
-                    .foregroundStyle(inscrit ? Theme.accent : Theme.text)
-                Text(manifestation.debutDate.map { Date.fr("MMM").string(from: $0).uppercased() } ?? "")
-                    .font(.cond(11, .semibold))
-                    .tracking(1.2)
-                    .foregroundStyle(Theme.muted)
-                if let heure {
-                    Text(heure)
-                        .font(.barlow(11, .semibold))
-                        .foregroundStyle(inscrit ? Theme.bg : Theme.accent)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 2)
-                        .background(inscrit ? Theme.accent : Theme.accent.opacity(0.13), in: Capsule())
-                }
-            }
-            .frame(width: 62)
-            .frame(minHeight: 74)
-            .background(inscrit ? Theme.accent.opacity(0.1) : Theme.surface2, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            DateAndTime(date: manifestation.debutDate, heure: heure, highlighted: inscrit)
 
             VStack(alignment: .leading, spacing: 6) {
                 Text(manifestation.libelle)

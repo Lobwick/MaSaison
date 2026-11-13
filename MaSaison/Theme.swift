@@ -207,6 +207,45 @@ struct DateBlock: View {
     }
 }
 
+/// Bloc date + heure (heure en pastille), utilisé pour les listes de courses.
+struct DateAndTime: View {
+    let date: Date?
+    var heure: String? = nil
+    var highlighted = false
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Text(date.map { Self.jour.string(from: $0) } ?? "—")
+                .font(.cond(22, .semibold))
+                .foregroundStyle(highlighted ? Theme.accent : Theme.text)
+            Text(date.map { Self.mois.string(from: $0).uppercased().replacingOccurrences(of: ".", with: "") } ?? "")
+                .font(.cond(11, .semibold))
+                .tracking(1.2)
+                .foregroundStyle(Theme.muted)
+            if let heure, !heure.isEmpty {
+                Text(heure)
+                    .font(.barlow(11, .semibold))
+                    .foregroundStyle(highlighted ? Theme.bg : Theme.accent)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2)
+                    .background(highlighted ? Theme.accent : Theme.accent.opacity(0.13), in: Capsule())
+            }
+        }
+        .frame(width: 62)
+        .frame(minHeight: 74)
+        .background(highlighted ? Theme.accent.opacity(0.1) : Theme.surface2, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private static let jour: DateFormatter = formatter("dd")
+    private static let mois: DateFormatter = formatter("MMM")
+    private static func formatter(_ format: String) -> DateFormatter {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "fr_FR")
+        f.dateFormat = format
+        return f
+    }
+}
+
 /// Ligne de liste : bloc date + titre + sous-titre + chevron.
 struct RowCard: View {
     let date: Date?

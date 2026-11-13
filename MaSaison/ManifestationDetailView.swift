@@ -67,7 +67,7 @@ struct ManifestationDetailView: View {
 
                 if let errorMessage { Text(errorMessage).font(.barlow(14)).foregroundStyle(Theme.danger) }
             }
-            .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 120)
+            .padding(.horizontal, 20).padding(.top, 4).padding(.bottom, 120)
             .containerRelativeFrame(.horizontal)
         }
         .screenBackground()
@@ -322,6 +322,7 @@ struct ManifestationDetailView: View {
                     .overlay(Circle().stroke(Theme.line, lineWidth: 1))
             }
         }
+        .padding(.top, -4)
     }
 
     private var entete: some View {

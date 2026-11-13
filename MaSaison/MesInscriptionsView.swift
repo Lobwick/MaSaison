@@ -17,6 +17,9 @@ struct MesInscriptionsView: View {
     @State private var segment: Segment = .aVenir
     @State private var meteoProchaine: Meteo?
     @State private var meteoManifestationID: Int?
+    @State private var heuresManifestations: [Int: String] = [:]
+    @State private var prochaineNavigationURL: URL?
+    @State private var photo: UIImage?
     private let homeAccent = Color(hex: 0x006948)
 
     private var aVenir: [Inscription] {
@@ -41,7 +44,10 @@ struct MesInscriptionsView: View {
                             inscription: prochaine,
                             dansAgenda: agenda.ajoute(manifestation: prochaine.manifestationID),
                             meteo: meteoManifestationID == prochaine.manifestationID ? meteoProchaine : nil,
-                            accent: homeAccent
+                            accent: homeAccent,
+                            heureDepart: heureAffichee(prochaine),
+                            agendaURL: agendaURL(for: prochaine.dateDebut),
+                            navigationURL: prochaineNavigationURL
                         )
                     }
                     .buttonStyle(.plain)
@@ -72,7 +78,7 @@ struct MesInscriptionsView: View {
                     Text(errorMessage).font(.barlow(14)).foregroundStyle(Theme.danger)
                 }
             }
-            .padding(.horizontal, 20).padding(.top, 24).padding(.bottom, 120)
+            .padding(.horizontal, 20).padding(.top, 0).padding(.bottom, 120)
             .containerRelativeFrame(.horizontal)
         }
         .overlay { if isLoading && inscriptions.isEmpty { ProgressView().tint(Theme.accent) } }
@@ -80,26 +86,13 @@ struct MesInscriptionsView: View {
         .toolbar(.hidden, for: .navigationBar)
         .refreshable { await load() }
         .task { await load() }
-    }
-
-    private var saison: String {
-        let maintenant = Date()
-        let annee = Calendar.current.component(.year, from: maintenant)
-        let debut = Calendar.current.component(.month, from: maintenant) >= 9 ? annee : annee - 1
-        return "\(debut)/\(debut + 1)"
+        .task { await chargerPhotoProfil() }
     }
 
     private var enteteAccueil: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
-                Image(systemName: "person")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(homeAccent.opacity(0.9))
-                    .frame(width: 36, height: 36)
-                    .background(homeAccent.opacity(0.08), in: Circle())
-                Text("UFOLEP · SAISON \(saison.replacingOccurrences(of: "/", with: "/"))")
-                    .font(.barlow(16, .semibold))
-                    .foregroundStyle(homeAccent)
+                avatarAccueil
                 Spacer()
                 Image(systemName: "bell")
                     .font(.system(size: 16, weight: .semibold))
@@ -108,6 +101,7 @@ struct MesInscriptionsView: View {
                     .background(Theme.surface2, in: Circle())
                     .overlay(Circle().stroke(Theme.line, lineWidth: 1))
             }
+            .padding(.top, -10)
             HStack(alignment: .top) {
                 Text("ACCUEIL")
                 .font(.cond(34))
@@ -116,6 +110,22 @@ struct MesInscriptionsView: View {
             }
             Rectangle().fill(Theme.line).frame(height: 1)
         }
+    }
+
+    private var avatarAccueil: some View {
+        Group {
+            if let photo {
+                Image(uiImage: photo).resizable().scaledToFill()
+            } else {
+                Image(systemName: "person.crop.circle.fill")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(homeAccent.opacity(0.85))
+            }
+        }
+        .frame(width: 36, height: 36)
+        .background(homeAccent.opacity(0.08), in: Circle())
+        .clipShape(Circle())
+        .overlay(Circle().stroke(Theme.line, lineWidth: 1))
     }
 
     private var segmentControl: some View {
@@ -164,7 +174,7 @@ struct MesInscriptionsView: View {
     private func ligne(_ i: Inscription) -> some View {
         NavigationLink { InscriptionDetailLoader(inscription: i) } label: {
             HStack(spacing: 14) {
-                DateBlock(date: i.dateDebut, highlighted: !i.estTerminee)
+                DateAndTime(date: i.dateDebut, heure: heureAffichee(i), highlighted: !i.estTerminee)
                     .frame(width: 60)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(i.libelle).font(.cond(20, .semibold)).foregroundStyle(Theme.text).lineLimit(1)
@@ -191,6 +201,29 @@ struct MesInscriptionsView: View {
         .buttonStyle(.plain)
     }
 
+    private func heureAffichee(_ inscription: Inscription) -> String? {
+        if let heure = heuresManifestations[inscription.manifestationID] { return heure }
+        if let date = inscription.dateDebut {
+            let cal = Calendar.current
+            let h = cal.component(.hour, from: date)
+            let m = cal.component(.minute, from: date)
+            if h != 0 || m != 0 {
+                return Date.fr("HH:mm").string(from: date)
+            }
+        }
+        guard let match = inscription.dateTexte.firstMatch(of: #/\b(\d{1,2})[:hH](\d{2})\b/#),
+              let heure = Int(match.output.1), heure >= 0, heure <= 23 else { return nil }
+        return String(format: "%02d:%@", heure, String(match.output.2))
+    }
+
+    private func normaliserHeure(_ brute: String?) -> String? {
+        guard let brute = brute?.trimmingCharacters(in: .whitespacesAndNewlines), !brute.isEmpty else { return nil }
+        if let d = Date.fr("HH:mm:ss").date(from: brute) { return Date.fr("HH:mm").string(from: d) }
+        if let d = Date.fr("HH:mm").date(from: brute) { return Date.fr("HH:mm").string(from: d) }
+        if brute.contains(":") { return brute }
+        return nil
+    }
+
     /// Par identifiant de manifestation, à défaut par date (les libellés diffèrent d'une page à l'autre).
     private func resultat(de i: Inscription) -> Resultat? {
         resultats.first { $0.manifestationID == i.manifestationID }
@@ -203,6 +236,7 @@ struct MesInscriptionsView: View {
         defer { isLoading = false }
         do {
             inscriptions = try await auth.withSession { try await auth.client.fetchInscriptions() }
+            await chargerHorairesInscriptions()
             // les résultats sont un bonus : leur échec ne bloque pas l'accueil
             resultats = (try? await auth.withSession { try await auth.client.fetchResultats() }) ?? resultats
             await chargerMeteoProchaine()
@@ -216,18 +250,71 @@ struct MesInscriptionsView: View {
     private func chargerMeteoProchaine() async {
         meteoProchaine = nil
         meteoManifestationID = nil
-        guard let prochaine = aVenir.first, let jour = prochaine.dateDebut, MeteoService.dansHorizon(jour) else { return }
+        prochaineNavigationURL = nil
+        guard let prochaine = aVenir.first else { return }
         do {
             guard let manifestation = try await auth.withSession({
                 try await auth.client.fetchManifestation(id: prochaine.manifestationID, libelle: prochaine.libelle)
-            }),
-            let c = manifestation.adresse?.coordinate else { return }
-            meteoProchaine = try await MeteoService.prevision(latitude: c.latitude, longitude: c.longitude, jour: jour)
+            }) else { return }
+            if let heure = normaliserHeure(manifestation.dateDebutHoraire) {
+                heuresManifestations[prochaine.manifestationID] = heure
+            }
+            if let c = manifestation.adresse?.coordinate {
+                prochaineNavigationURL = navigationURL(for: c.latitude, longitude: c.longitude)
+                if let jour = prochaine.dateDebut, MeteoService.dansHorizon(jour) {
+                    meteoProchaine = try await MeteoService.prevision(latitude: c.latitude, longitude: c.longitude, jour: jour)
+                }
+            }
             meteoManifestationID = prochaine.manifestationID
         } catch {
             meteoProchaine = nil
             meteoManifestationID = prochaine.manifestationID
         }
+    }
+
+    private func chargerHorairesInscriptions() async {
+        let cibles = Array(inscriptions.prefix(10))
+        var map = heuresManifestations
+        for inscription in cibles {
+            do {
+                let manifestation = try await auth.withSession {
+                    try await auth.client.fetchManifestation(id: inscription.manifestationID, libelle: inscription.libelle)
+                }
+                if let heure = normaliserHeure(manifestation?.dateDebutHoraire) {
+                    map[inscription.manifestationID] = heure
+                }
+            } catch {
+                continue
+            }
+        }
+        heuresManifestations = map
+    }
+
+    private func chargerPhotoProfil() async {
+        do {
+            let profil = try await auth.withSession { try await auth.client.fetchProfil() }
+            guard let url = profil.photoURL else { return }
+            if let data = try? await auth.withSession({ try await auth.client.download(url) }) {
+                photo = UIImage(data: data)
+            }
+        } catch {
+            photo = nil
+        }
+    }
+
+    private func agendaURL(for date: Date?) -> URL? {
+        guard let date else { return nil }
+        let t = Int(date.timeIntervalSinceReferenceDate)
+        return URL(string: "calshow:\(t)")
+    }
+
+    private func navigationURL(for latitude: Double, longitude: Double) -> URL? {
+        var components = URLComponents(string: "https://maps.apple.com")
+        components?.queryItems = [
+            URLQueryItem(name: "daddr", value: "\(latitude),\(longitude)"),
+            URLQueryItem(name: "dirflg", value: "d")
+        ]
+        return components?.url
     }
 }
 
@@ -236,6 +323,9 @@ private struct ProchaineCourseCard: View {
     let dansAgenda: Bool
     let meteo: Meteo?
     let accent: Color
+    let heureDepart: String?
+    let agendaURL: URL?
+    let navigationURL: URL?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -251,11 +341,9 @@ private struct ProchaineCourseCard: View {
                         .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
                     Text([inscription.organisateur, inscription.epreuves.flatMap(\.niveaux).first].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
                         .font(.barlow(14)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
-                    if let date = inscription.dateDebut {
-                        Text("Départ \(Date.fr("HH'h'mm").string(from: date))")
-                            .font(.barlow(12, .semibold))
-                            .foregroundStyle(Theme.textSoft)
-                    }
+                    Text("Départ \(heureDepartTexte)")
+                        .font(.barlow(12, .semibold))
+                        .foregroundStyle(Theme.textSoft)
                     HStack(spacing: 8) {
                         Label(inscription.organisateur, systemImage: "mappin")
                     }
@@ -272,8 +360,25 @@ private struct ProchaineCourseCard: View {
                     .font(.barlow(13, .semibold))
                     .foregroundStyle(accent)
                 Spacer()
-                Pill(text: "Circuit", systemImage: "map", fg: Theme.textSoft, bg: Theme.surface2)
-                Pill(text: "Agenda", systemImage: "calendar.badge.plus", fg: accent, bg: accent.opacity(0.12))
+                if let navigationURL {
+                    Link(destination: navigationURL) {
+                        Pill(text: "Naviguer", systemImage: "location.fill", fg: Theme.textSoft, bg: Theme.surface2)
+                    }
+                } else {
+                    Pill(text: "Naviguer", systemImage: "location.fill", fg: Theme.faint, bg: Theme.surface2)
+                }
+                if let agendaURL {
+                    Link(destination: agendaURL) {
+                        Pill(
+                            text: "Agenda",
+                            systemImage: "calendar.badge.plus",
+                            fg: dansAgenda ? accent : Theme.textSoft,
+                            bg: dansAgenda ? accent.opacity(0.12) : Theme.surface2
+                        )
+                    }
+                } else {
+                    Pill(text: "Agenda", systemImage: "calendar.badge.plus", fg: Theme.faint, bg: Theme.surface2)
+                }
             }
         }
         .padding(20)
@@ -328,6 +433,12 @@ private struct ProchaineCourseCard: View {
         if secondesRestantes <= 0 { return "Jour J" }
         if secondesRestantes < 86_400 { return "H-\(heuresRestantes)" }
         return "J-\(joursRestants)"
+    }
+
+    private var heureDepartTexte: String {
+        if let heureDepart { return heureDepart.replacingOccurrences(of: ":", with: "h") }
+        if let date = inscription.dateDebut { return Date.fr("HH'h'mm").string(from: date) }
+        return "—"
     }
 
     private func meteoResume(_ meteo: Meteo) -> some View {
