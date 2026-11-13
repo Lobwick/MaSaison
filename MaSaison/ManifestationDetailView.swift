@@ -402,8 +402,9 @@ struct ManifestationDetailView: View {
             }
             trajet = nouveau
             do {
-                try await AgendaService.mettreAJourTrajet(identifiant: identifiant, manifestation: manifestation, course: course,
-                                                         echauffementMinutes: echauffement, trajet: nouveau)
+                let id = try await AgendaService.mettreAJourTrajet(identifiant: identifiant, manifestation: manifestation, course: course,
+                                                                  echauffementMinutes: echauffement, trajet: nouveau)
+                if !id.isEmpty { agenda.enregistrer(manifestation: manifestation.id, course: course.id, identifiant: id) }
                 infoAgenda = "Trajet mis à jour : \(nouveau.texte)."
             } catch AgendaError.evenementIntrouvable {
                 agenda.retirer(manifestation: manifestation.id, course: course.id)

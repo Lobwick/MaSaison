@@ -49,7 +49,7 @@ enum AgendaService {
 
         let event = EKEvent(eventStore: store)
         event.calendar = store.defaultCalendarForNewEvents
-        event.title = "\(manifestation.libelle.capitalized) – \(course.niveau.libelle)"
+        event.title = titre(manifestation: manifestation, course: course)
         event.startDate = creneau.debut
         event.endDate = creneau.fin
 
@@ -78,6 +78,19 @@ enum AgendaService {
         return event.eventIdentifier ?? ""
     }
 
+    private static func titre(manifestation: Manifestation, course: ConfigNiveau) -> String {
+        "\(manifestation.libelle.capitalized) – \(course.niveau.libelle)"
+    }
+
+    /// Retrouve l'événement par son titre et son horaire (l'identifiant n'est pas toujours rendu en écriture seule).
+    private static func trouver(dans store: EKEventStore, manifestation: Manifestation, course: ConfigNiveau, creneau: Creneau) -> EKEvent? {
+        let titre = titre(manifestation: manifestation, course: course)
+        let predicat = store.predicateForEvents(withStart: creneau.debut.addingTimeInterval(-86_400),
+                                                end: creneau.fin.addingTimeInterval(86_400), calendars: nil)
+        let candidats = store.events(matching: predicat).filter { $0.title == titre }
+        return candidats.first { abs($0.startDate.timeIntervalSince(creneau.debut)) < 60 } ?? candidats.first
+    }
+
     /// « Trajet : 35 min en voiture · 28 km, partir vers 11:10 (calculé le 13 nov. à 10:32) ».
     private static func ligneTrajet(_ trajet: Trajet, creneau: Creneau) -> String {
         let fr = Locale(identifier: "fr_FR")
@@ -89,20 +102,25 @@ enum AgendaService {
 
     /// Remplace la ligne « Trajet : » de l'événement déjà créé, sans toucher au reste des notes.
     /// Retrouver l'événement demande l'accès complet au calendrier : il n'est demandé qu'à ce moment-là.
+    @discardableResult
     static func mettreAJourTrajet(identifiant: String, manifestation: Manifestation, course: ConfigNiveau,
-                                  echauffementMinutes: Int, trajet: Trajet) async throws {
+                                  echauffementMinutes: Int, trajet: Trajet) async throws -> String {
         guard let creneau = creneau(manifestation: manifestation, course: course, echauffementMinutes: echauffementMinutes) else {
             throw AgendaError.horairesManquants
         }
         let store = EKEventStore()
         guard try await store.requestFullAccessToEvents() else { throw AgendaError.accesRefuse }
-        guard !identifiant.isEmpty, let event = store.event(withIdentifier: identifiant) else { throw AgendaError.evenementIntrouvable }
+        let parIdentifiant = identifiant.isEmpty ? nil : store.event(withIdentifier: identifiant)
+        guard let event = parIdentifiant ?? trouver(dans: store, manifestation: manifestation, course: course, creneau: creneau) else {
+            throw AgendaError.evenementIntrouvable
+        }
 
         var lignes = (event.notes ?? "").components(separatedBy: "\n").filter { !$0.hasPrefix("Trajet :") }
         while lignes.last?.trimmingCharacters(in: .whitespaces).isEmpty == true { lignes.removeLast() }
         lignes.append(ligneTrajet(trajet, creneau: creneau))
         event.notes = lignes.joined(separator: "\n")
         try store.save(event, span: .thisEvent)
+        return event.eventIdentifier ?? identifiant
     }
 
     private static func date(_ jour: String, _ heure: String?) -> Date? {
