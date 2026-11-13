@@ -16,11 +16,15 @@ L'application demande un accès en **écriture seule** à ton calendrier, pour y
 
 ## Cartes et lieux
 
-Le lieu d'une manifestation est affiché avec Plans d'Apple (MapKit). L'application n'utilise pas ta position.
+Le lieu d'une manifestation est affiché avec Plans d'Apple (MapKit).
 
 ## Météo
 
 Quand l'épreuve a lieu dans les 10 prochains jours, l'application demande la prévision du jour au service Apple WeatherKit. Seules les coordonnées du lieu de la manifestation et la date sont envoyées, jamais ton identité ni ta position.
+
+## Position
+
+Si tu le demandes (bouton « Temps de trajet » d'une fiche) et seulement si tu l'autorises, l'application lit ta position quand elle est ouverte, pour calculer le temps de trajet en voiture jusqu'au lieu avec Plans d'Apple. La position n'est ni enregistrée ni envoyée à l'auteur ni à un autre service. Tu peux retirer l'autorisation à tout moment dans les Réglages de l'iPhone.
 
 ## Inscription et paiement
 

@@ -265,6 +265,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "Ma Saison";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCalendarsWriteOnlyAccessUsageDescription = "L'app ajoute à votre calendrier la course que vous choisissez, avec son lieu et ses horaires d'échauffement, d'appel et de départ.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "L'app utilise votre position uniquement pour calculer le temps de trajet jusqu'au lieu d'une manifestation. Elle n'est ni enregistrée ni envoyée.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -312,6 +313,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "Ma Saison";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCalendarsWriteOnlyAccessUsageDescription = "L'app ajoute à votre calendrier la course que vous choisissez, avec son lieu et ses horaires d'échauffement, d'appel et de départ.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "L'app utilise votre position uniquement pour calculer le temps de trajet jusqu'au lieu d'une manifestation. Elle n'est ni enregistrée ni envoyée.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;

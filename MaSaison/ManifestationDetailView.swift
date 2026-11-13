@@ -21,6 +21,8 @@ struct ManifestationDetailView: View {
     @State private var erreurMeteo: String?
     @State private var traceCharge = false
     @State private var meteoCharge = false
+    @State private var trajet: Trajet?
+    @State private var trajetEnCours = false
     @State private var mentionMeteo: MeteoAttribution?
     @Environment(\.colorScheme) private var schema
 
@@ -72,6 +74,8 @@ struct ManifestationDetailView: View {
         .task { await charger() }
         .task { await chargerTrace() }
         .task { await chargerMeteo() }
+        // déjà autorisé : le trajet se calcule sans rien demander ; sinon un bouton propose de le faire
+        .task { if TrajetService.autorise { await calculerTrajet() } }
     }
 
     // MARK: données
@@ -116,6 +120,33 @@ struct ManifestationDetailView: View {
             if meteo != nil { mentionMeteo = await MeteoService.attribution() }
         } catch {
             erreurMeteo = "\(error.localizedDescription)\n\(String(describing: error))"
+        }
+    }
+
+    /// Temps de trajet depuis ma position (demande l'autorisation la première fois).
+    private func calculerTrajet() async {
+        guard let c = manifestation.adresse?.coordinate, !trajetEnCours else { return }
+        trajetEnCours = true
+        defer { trajetEnCours = false }
+        trajet = await TrajetService.trajet(versLatitude: c.latitude, longitude: c.longitude)
+    }
+
+    @ViewBuilder
+    private var trajetLigne: some View {
+        if let trajet {
+            Label(trajet.texte, systemImage: "car.fill")
+                .font(.barlow(13, .semibold)).foregroundStyle(Theme.accent).padding(.top, 4)
+        } else if trajetEnCours {
+            ProgressView().controlSize(.small).padding(.top, 4)
+        } else if TrajetService.nonDemande, manifestation.adresse?.coordinate != nil {
+            VStack(alignment: .leading, spacing: 2) {
+                Button { Task { await calculerTrajet() } } label: {
+                    Label("Temps de trajet depuis ma position", systemImage: "car")
+                        .font(.barlow(13, .semibold)).foregroundStyle(Theme.accent)
+                }
+                Text("Ta position sert uniquement à ce calcul.").font(.barlow(11)).foregroundStyle(Theme.muted)
+            }
+            .padding(.top, 4)
         }
     }
 
@@ -349,6 +380,7 @@ struct ManifestationDetailView: View {
                             Text((adresse.commune ?? "").capitalized).font(.barlow(15, .semibold)).foregroundStyle(Theme.text)
                             Text(adresse.codePostalFr ?? "")
                                 .font(.barlow(14)).foregroundStyle(Theme.muted)
+                            trajetLigne
                         }
                         Spacer()
                         if let c = adresse.coordinate {
