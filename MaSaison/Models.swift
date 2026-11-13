@@ -2,6 +2,12 @@ import Foundation
 
 struct Page<T: Decodable>: Decodable {
     let data: [T]
+    let lastPage: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case data
+        case lastPage = "last_page"
+    }
 }
 
 /// Correspondant de la manifestation (page « Informations générales » : mail et téléphone spécifiques à l'événement).

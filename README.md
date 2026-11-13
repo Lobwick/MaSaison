@@ -6,7 +6,7 @@
   <img src="docs/screenshots/profil.png" width="30%" alt="Profil">
 </p>
 
-Application iPhone (SwiftUI) pour suivre ses manifestations sportives : cartes, inscriptions, manifestations par sport et département, inscription et paiement, ajout à l'agenda.
+Application iPhone (SwiftUI) pour suivre ses manifestations sportives : cartes, inscriptions, manifestations en liste/carte/calendrier par sport et département, inscription et paiement, ajout à l'agenda.
 
 > **Application non officielle.** Elle n'est pas éditée par l'UFOLEP. Elle est réalisée bénévolement par Félix.
 
@@ -73,7 +73,7 @@ IMPORTANT : application non officielle. Elle n'est pas éditée par l'UFOLEP ; e
 
 CE QUE TU PEUX TESTER
 • Accueil : ta prochaine course avec le compte à rebours, tes inscriptions à venir et terminées.
-• Manifestations : la liste filtrée par sport et par département, avec en premier celles qui correspondent à tes cartes. Une icône indique celles où tu es déjà inscrit.
+• Manifestations : vues Liste / Carte / Calendrier mensuel filtrées par sport et par département, avec en premier en liste celles qui correspondent à tes cartes. Une icône indique celles où tu es déjà inscrit.
 • Détail d'une manifestation : organisateur, état des inscriptions, lieu sur une carte, horaires d'échauffement, d'appel et de départ pour ta catégorie.
 • Inscription de bout en bout : « S'inscrire », confirmation du tarif, validation puis paiement par carte bancaire sur la page de paiement du site, affichée dans l'application.
 • Agenda : ajouter une course à ton calendrier, avec la durée d'échauffement que tu règles dans le Profil.

@@ -36,9 +36,21 @@ struct MainTabView: View {
                 NavigationStack { MesInscriptionsView() }
             }
             Tab("Courses", systemImage: "flag.checkered", value: 1) {
-                NavigationStack { ManifestationsView() }
+                NavigationStack {
+                    ManifestationsView(vueInitiale: .liste, afficherSelecteurVue: false, afficherRecherche: true)
+                }
             }
-            Tab("Profil", systemImage: "person.crop.circle", value: 2) {
+            Tab("Carte", systemImage: "map", value: 2) {
+                NavigationStack {
+                    ManifestationsView(vueInitiale: .carte, afficherSelecteurVue: false, afficherRecherche: false)
+                }
+            }
+            Tab("Calendrier", systemImage: "calendar", value: 3) {
+                NavigationStack {
+                    ManifestationsView(vueInitiale: .calendrier, afficherSelecteurVue: false, afficherRecherche: false)
+                }
+            }
+            Tab("Profil", systemImage: "person.crop.circle", value: 4) {
                 NavigationStack { ProfilView() }
             }
         }

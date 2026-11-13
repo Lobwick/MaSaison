@@ -74,29 +74,36 @@ final class UfolepClient {
         return String(decoding: data, as: UTF8.self)
     }
 
-    /// Équivalent du calendrier fédéral (à partir d'aujourd'hui, comme le site).
+    /// Une page du calendrier fédéral (à partir d'aujourd'hui, comme le site).
     /// `libelle` filtre sur le nom, `structureIDs` sur les départements (inclut leurs clubs),
-    /// `disciplineCodes` sur le sport : le site n'accepte qu'un code à la fois, on fusionne donc une requête par sport.
-    func searchManifestations(libelle: String = "", structureIDs: [Int] = [], disciplineCodes: [String] = [], depuis: String? = nil) async throws -> [Manifestation] {
-        func requete(discipline: String?) async throws -> [Manifestation] {
-            var query = [
-                URLQueryItem(name: "page", value: "1"),
-                URLQueryItem(name: "par_page", value: "50"),
-                URLQueryItem(name: "date_debut", value: depuis ?? Self.todayString),
-            ]
-            if !libelle.isEmpty { query.append(.init(name: "libelle", value: libelle)) }
-            if let discipline { query.append(.init(name: "discipline_code", value: discipline)) }
-            // Laravel : structures_ids[]=75&structures_ids[]=78
-            for id in structureIDs { query.append(.init(name: "structures_ids[]", value: String(id))) }
-            let data = try await getJSON("manifestations/calendrier-federal/query", query)
-            return try JSONDecoder().decode(Page<Manifestation>.self, from: data).data
+    /// `discipline` sur le sport : le site n'accepte qu'un code à la fois.
+    func manifestationsPage(page: Int, libelle: String = "", structureIDs: [Int] = [], discipline: String? = nil, depuis: String? = nil) async throws -> (manifestations: [Manifestation], suite: Bool) {
+        var query = [
+            URLQueryItem(name: "page", value: String(page)),
+            URLQueryItem(name: "par_page", value: String(Self.manifestationsParPage)),
+            URLQueryItem(name: "date_debut", value: depuis ?? Self.todayString),
+        ]
+        if !libelle.isEmpty { query.append(.init(name: "libelle", value: libelle)) }
+        if let discipline { query.append(.init(name: "discipline_code", value: discipline)) }
+        // Laravel : structures_ids[]=75&structures_ids[]=78
+        for id in structureIDs { query.append(.init(name: "structures_ids[]", value: String(id))) }
+        let data = try await getJSON("manifestations/calendrier-federal/query", query)
+        let reponse = try JSONDecoder().decode(Page<Manifestation>.self, from: data)
+        let suite = reponse.lastPage.map { page < $0 } ?? (reponse.data.count >= Self.manifestationsParPage)
+        return (reponse.data, suite && !reponse.data.isEmpty)
+    }
+
+    private static let manifestationsParPage = 50
+
+    /// Toutes les pages d'une recherche (plafond de sécurité à 40 pages).
+    func searchManifestations(libelle: String = "", structureIDs: [Int] = [], depuis: String? = nil) async throws -> [Manifestation] {
+        var resultats: [Manifestation] = []
+        for page in 1...40 {
+            let (trouvees, suite) = try await manifestationsPage(page: page, libelle: libelle, structureIDs: structureIDs, depuis: depuis)
+            resultats += trouvees
+            if !suite { break }
         }
-        guard !disciplineCodes.isEmpty else { return try await requete(discipline: nil) }
-        var fusion: [Int: Manifestation] = [:]
-        for code in disciplineCodes {
-            for m in try await requete(discipline: code) { fusion[m.id] = m }
-        }
-        return fusion.values.sorted { ($0.debutDate ?? .distantFuture, $0.id) < ($1.debutDate ?? .distantFuture, $1.id) }
+        return resultats
     }
 
     /// Retrouve une manifestation (même passée) par son nom, puis son id.
