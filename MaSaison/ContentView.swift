@@ -5,6 +5,7 @@ struct ContentView: View {
     @State private var filtres = FiltresStore()
     @State private var cartes = CartesStore()
     @State private var agenda = AgendaStore()
+    @State private var suivi = SuiviCoursesStore()
 
     var body: some View {
         Group {
@@ -20,6 +21,7 @@ struct ContentView: View {
         .environment(filtres)
         .environment(cartes)
         .environment(agenda)
+        .environment(suivi)
         .task { await auth.restoreSession() }
     }
 }

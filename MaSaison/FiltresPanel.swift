@@ -26,17 +26,12 @@ struct FiltresPanel: View {
                           supprimer: { departements = [] })
                 }
 
-                Button {
+                ActionRow(titre: "Afficher les résultats", icone: "list.bullet", ton: .principal) { dismiss() }
+
+                ActionRow(titre: "Rétablir les filtres", sousTitre: "Ceux définis dans le profil", icone: "arrow.counterclockwise") {
                     departements = store.departementsParDefaut
                     sports = store.sportsParDefaut
-                } label: {
-                    Label("Rétablir les filtres par défaut", systemImage: "arrow.counterclockwise")
-                        .font(.cond(15)).tracking(1.5).textCase(.uppercase).foregroundStyle(Theme.textSoft)
-                        .frame(maxWidth: .infinity, minHeight: 48)
                 }
-
-                Button("Afficher les résultats") { dismiss() }
-                    .buttonStyle(PrimaryButtonStyle())
             }
             .padding(.horizontal, 20).padding(.top, 20).padding(.bottom, 24)
             }

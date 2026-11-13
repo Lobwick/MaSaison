@@ -180,28 +180,72 @@ struct TitleAndProfileActions: View {
     }
 }
 
-struct PrimaryButtonStyle: ButtonStyle {
-    var danger = false
+/// Ton d'une `ActionRow` : action attendue (fond accent), secondaire (fond clair bordé) ou destructive.
+enum ActionTon { case principal, secondaire, danger }
 
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.cond(17)).tracking(1.5).textCase(.uppercase)
-            .foregroundStyle(danger ? Theme.danger : Color.white)
-            .frame(maxWidth: .infinity, minHeight: 52)
-            .background(danger ? .clear : Theme.accent, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay { if danger { RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.danger.opacity(0.35), lineWidth: 1) } }
-            .opacity(configuration.isPressed ? 0.8 : 1)
+/// Visuel d'une action : pastille icône, titre et sous-titre, chevron. À placer dans un `Button`, `Link`,
+/// `ShareLink` ou `NavigationLink` avec `.buttonStyle(ActionRowStyle())` ; sinon utiliser `ActionRow`.
+struct ActionRowLabel: View {
+    let titre: String
+    var sousTitre: String?
+    let icone: String
+    var ton: ActionTon = .secondaire
+
+    private var plein: Bool { ton == .principal }
+    private var teinte: Color { ton == .danger ? Theme.danger : Theme.accent }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icone)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(plein ? Color.white : teinte)
+                .frame(width: 40, height: 40)
+                .background(plein ? Color.white.opacity(0.18) : teinte.opacity(0.12),
+                            in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(titre)
+                    .font(.cond(18)).tracking(1.2).textCase(.uppercase)
+                    .foregroundStyle(plein ? Color.white : ton == .danger ? Theme.danger : Theme.text)
+                if let sousTitre {
+                    Text(sousTitre)
+                        .font(.barlow(12))
+                        .foregroundStyle(plein ? Color.white.opacity(0.85) : Theme.muted)
+                        .lineLimit(2)
+                }
+            }
+            .lineLimit(1).minimumScaleFactor(0.85)
+            Spacer(minLength: 8)
+            Image(systemName: "chevron.right")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(plein ? Color.white.opacity(0.8) : Theme.faint)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
+        .background(plein ? Theme.accent : Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .stroke(plein ? Color.clear : ton == .danger ? Theme.danger.opacity(0.3) : Theme.line, lineWidth: 1))
+        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 
-struct OutlineButtonStyle: ButtonStyle {
+/// Action d'une carte sous forme de bouton (voir `ActionRowLabel`).
+struct ActionRow: View {
+    let titre: String
+    var sousTitre: String?
+    let icone: String
+    var ton: ActionTon = .secondaire
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) { ActionRowLabel(titre: titre, sousTitre: sousTitre, icone: icone, ton: ton) }
+            .buttonStyle(ActionRowStyle())
+    }
+}
+
+/// Légère opacité à l'appui, sans autre décoration.
+struct ActionRowStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.cond(17)).tracking(1.5).textCase(.uppercase)
-            .foregroundStyle(Theme.accent)
-            .frame(maxWidth: .infinity, minHeight: 52)
-            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.accent, lineWidth: 1))
-            .opacity(configuration.isPressed ? 0.8 : 1)
+        configuration.label.opacity(configuration.isPressed ? 0.8 : 1)
     }
 }
 

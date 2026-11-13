@@ -19,6 +19,7 @@ struct ManifestationsView: View {
     @Environment(AuthModel.self) private var auth
     @Environment(FiltresStore.self) private var store
     @Environment(CartesStore.self) private var cartes
+    @Environment(SuiviCoursesStore.self) private var suivi
     @AppStorage("hideFloatingTabBar") private var hideFloatingTabBar = false
     private let afficherSelecteurVue: Bool
     private let afficherRecherche: Bool
@@ -32,7 +33,6 @@ struct ManifestationsView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var panneauOuvert = false
-    @State private var inscritIDs: Set<Int> = []
     // pagination : le site n'accepte qu'un sport à la fois, on suit donc la page suivante de chaque sport encore non épuisé
     @State private var prochainePage = 1
     @State private var sportsRestants: [String?] = [nil]
@@ -63,7 +63,9 @@ struct ManifestationsView: View {
 
     private enum FiltreStatut: String, CaseIterable, Identifiable {
         case tous
+        case envie
         case inscrit
+        case valide
         var id: String { rawValue }
     }
 
@@ -300,7 +302,9 @@ struct ManifestationsView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
                     chipStatut(.tous, texte: "Tous", icone: nil, couleur: Theme.text, fond: Theme.text, texteCouleur: Theme.bg)
-                    chipStatut(.inscrit, texte: "Inscrit (\(inscritIDs.count))", icone: "checkmark.circle.fill", couleur: Theme.accent, fond: Theme.accent.opacity(0.12), texteCouleur: Theme.accent)
+                    chipStatut(.envie, texte: "Envies (\(suivi.envies.count))", icone: "bookmark.fill", couleur: Theme.warning, fond: Theme.warning.opacity(0.12), texteCouleur: Theme.warning)
+                    chipStatut(.inscrit, texte: "Inscrit (\(suivi.inscrits.count))", icone: "hourglass", couleur: Theme.secondary, fond: Theme.secondary.opacity(0.12), texteCouleur: Theme.secondary)
+                    chipStatut(.valide, texte: "Validé (\(suivi.valides.count))", icone: "checkmark.circle.fill", couleur: Theme.accent, fond: Theme.accent.opacity(0.12), texteCouleur: Theme.accent)
                 }
                 .padding(.horizontal, 1)
             }
@@ -319,10 +323,21 @@ struct ManifestationsView: View {
         }
     }
 
+    private var messageListeVide: String {
+        switch filtreStatut {
+        case .tous: "Aucune course trouvée avec les filtres actifs."
+        case .envie: "Aucune course de ta liste d'envies avec les filtres actifs. Touche le signet d'une course pour l'ajouter."
+        case .inscrit: "Aucune inscription en attente de paiement avec les filtres actifs."
+        case .valide: "Aucune inscription validée avec les filtres actifs."
+        }
+    }
+
     private var vueListe: some View {
         let source = switch filtreStatut {
         case .tous: manifestations
-        case .inscrit: manifestations.filter { inscritIDs.contains($0.id) }
+        case .envie: manifestations.filter { suivi.etat($0.id) == .envie }
+        case .inscrit: manifestations.filter { suivi.etat($0.id) == .inscrit }
+        case .valide: manifestations.filter { suivi.etat($0.id) == .valide }
         }
         let pourMoi = source.filter(cartes.correspond)
         let autres = source.filter { !cartes.correspond($0) }
@@ -341,7 +356,7 @@ struct ManifestationsView: View {
                 ForEach(autres) { ligne($0) }
             }
             if source.isEmpty {
-                Text(filtreStatut == .inscrit ? "Aucune course inscrite avec les filtres actifs." : "Aucune course trouvée avec les filtres actifs.")
+                Text(messageListeVide)
                     .font(.barlow(14))
                     .foregroundStyle(Theme.muted)
                     .card(padding: 14)
@@ -577,11 +592,9 @@ struct ManifestationsView: View {
                 NavigationLink {
                     ManifestationDetailView(manifestation: manifestation)
                 } label: {
-                    Label("Ouvrir la fiche", systemImage: "arrow.right.circle.fill")
-                        .font(.cond(16, .semibold)).tracking(1.2).textCase(.uppercase)
-                        .frame(maxWidth: .infinity, minHeight: 44)
+                    ActionRowLabel(titre: "Ouvrir la fiche", sousTitre: "Courses, horaires, météo et tracé", icone: "doc.text.magnifyingglass", ton: .principal)
                 }
-                .buttonStyle(OutlineButtonStyle())
+                .buttonStyle(ActionRowStyle())
             } else {
                 ForEach(Array(point.manifestations.prefix(4))) { manifestation in
                     NavigationLink {
@@ -620,10 +633,9 @@ struct ManifestationsView: View {
                 NavigationLink {
                     ManifestationDetailView(manifestation: manifestation)
                 } label: {
-                    Label("Ouvrir la fiche", systemImage: "arrow.right.circle.fill")
-                        .font(.cond(15, .semibold)).tracking(1.2).textCase(.uppercase)
+                    ActionRowLabel(titre: "Ouvrir la fiche", sousTitre: "Courses, horaires, météo et tracé", icone: "doc.text.magnifyingglass", ton: .principal)
                 }
-                .buttonStyle(OutlineButtonStyle())
+                .buttonStyle(ActionRowStyle())
             }
             .card(radius: 20, padding: 14)
         } else {
@@ -1217,10 +1229,16 @@ struct ManifestationsView: View {
         } label: {
             CourseListRow(
                 manifestation: m,
-                inscrit: inscritIDs.contains(m.id)
+                etat: suivi.etat(m.id)
             )
         }
         .buttonStyle(.plain)
+        // signet hors du NavigationLink pour que le toucher n'ouvre pas le détail ; place réservée dans la ligne
+        .overlay(alignment: .trailing) {
+            if suivi.etat(m.id).envieModifiable {
+                BoutonEnvie(manifestationID: m.id).padding(.trailing, 40)
+            }
+        }
     }
 
     /// Département du lieu d'après le code postal (« 59 » pour 59000, « 971 » pour 97100) ; vrai si inconnu.
@@ -1230,11 +1248,9 @@ struct ManifestationsView: View {
         return numeros.contains(String(cp.prefix(outreMer ? 3 : 2).drop { $0 == "0" }))
     }
 
-    /// Courses où tu es déjà inscrit (badge dans la liste).
+    /// Inscriptions et paiements (badges et filtres de la liste).
     private func chargerInscriptions() async {
-        if let inscriptions = try? await auth.withSession({ try await auth.client.fetchInscriptions() }) {
-            inscritIDs = Set(inscriptions.map(\.manifestationID))
-        }
+        await suivi.actualiser(auth)
     }
 
     private func load() async {
@@ -1373,7 +1389,10 @@ struct ManifestationsView: View {
 
 private struct CourseListRow: View {
     let manifestation: Manifestation
-    let inscrit: Bool
+    let etat: EtatCourse
+
+    private var inscrit: Bool { etat == .inscrit || etat == .valide }
+    private var couleurEtat: Color { etat == .valide ? Theme.accent : Theme.secondary }
 
     private static let heureFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -1404,21 +1423,17 @@ private struct CourseListRow: View {
                     .font(.barlow(13))
                     .foregroundStyle(Theme.muted)
                     .lineLimit(1)
-                if inscrit {
-                    Label("Inscrit", systemImage: "checkmark.seal.fill")
-                        .font(.barlow(12, .semibold))
-                        .foregroundStyle(Theme.accent)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(Theme.accent.opacity(0.12), in: Capsule())
-                }
+                if inscrit { EtatCourseBadge(etat: etat) }
             }
             Spacer()
-            Image(systemName: inscrit ? "checkmark.circle.fill" : "chevron.right")
+            if etat.envieModifiable {
+                Color.clear.frame(width: 36, height: 36) // emplacement du signet « liste d'envies »
+            }
+            Image(systemName: etat == .valide ? "checkmark.circle.fill" : etat == .inscrit ? "hourglass.circle.fill" : "chevron.right")
                 .font(.system(size: inscrit ? 22 : 14, weight: .semibold))
-                .foregroundStyle(inscrit ? Theme.accent : Theme.faint)
+                .foregroundStyle(inscrit ? couleurEtat : Theme.faint)
         }
-        .card(border: inscrit ? Theme.accent.opacity(0.35) : Theme.line, radius: 24, padding: 12)
+        .card(border: inscrit ? couleurEtat.opacity(0.35) : Theme.line, radius: 24, padding: 12)
     }
 }
 

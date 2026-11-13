@@ -8,6 +8,7 @@ struct ManifestationDetailView: View {
     @Environment(AuthModel.self) private var auth
     @Environment(CartesStore.self) private var cartes
     @Environment(AgendaStore.self) private var agenda
+    @Environment(SuiviCoursesStore.self) private var suivi
     @AppStorage("boutonAgenda") private var boutonAgenda = true
     @AppStorage("echauffementMinutes") private var echauffement = 60
     @Environment(\.dismiss) private var dismiss
@@ -83,6 +84,7 @@ struct ManifestationDetailView: View {
         .task { await chargerMeteo() }
         .task { correspondant = try? await auth.withSession { try await auth.client.fetchCorrespondant(manifestationID: manifestation.id) } }
         .task { await chargerPhotoProfil() }
+        .task { await suivi.actualiser(auth) }
         // déjà autorisé : le trajet se calcule sans rien demander ; sinon un bouton propose de le faire
         .task { if TrajetService.autorise { await calculerTrajet() } }
         .quickLookPreview($apercu)
@@ -140,12 +142,18 @@ struct ManifestationDetailView: View {
                     Text("Correspondant : \(nom)").font(.barlow(14)).foregroundStyle(Theme.muted)
                 }
                 if let correspondant, correspondant.telephoneURL != nil || correspondant.emailURL != nil {
-                    HStack(spacing: 10) {
+                    VStack(spacing: 8) {
                         if let tel = correspondant.telephoneURL {
-                            Link(destination: tel) { Label("Appeler", systemImage: "phone") }.buttonStyle(OutlineButtonStyle())
+                            Link(destination: tel) {
+                                ActionRowLabel(titre: "Appeler", sousTitre: correspondant.numSpecifique, icone: "phone")
+                            }
+                            .buttonStyle(ActionRowStyle())
                         }
                         if let mail = correspondant.emailURL {
-                            Link(destination: mail) { Label("Écrire", systemImage: "envelope") }.buttonStyle(OutlineButtonStyle())
+                            Link(destination: mail) {
+                                ActionRowLabel(titre: "Écrire", sousTitre: correspondant.mailSpecifique, icone: "envelope")
+                            }
+                            .buttonStyle(ActionRowStyle())
                         }
                     }
                 }
@@ -348,8 +356,12 @@ struct ManifestationDetailView: View {
 
     private var entete: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(manifestation.libelle).font(.cond(34)).textCase(.uppercase).foregroundStyle(Theme.text)
-                .lineSpacing(-2).fixedSize(horizontal: false, vertical: true)
+            HStack(alignment: .top, spacing: 8) {
+                Text(manifestation.libelle).font(.cond(34)).textCase(.uppercase).foregroundStyle(Theme.text)
+                    .lineSpacing(-2).fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+                BoutonEnvie(manifestationID: manifestation.id, taille: 22)
+            }
             if let debut = manifestation.debutDate {
                 Text(dateTexte(debut)).font(.barlow(14, .semibold)).tracking(0.6).foregroundStyle(Theme.muted)
             }
@@ -382,8 +394,8 @@ struct ManifestationDetailView: View {
 
     private var statut: Statut {
         let now = Date()
-        let debut = manifestation.datesInscriptionStart ?? ""
-        let fin = manifestation.datesInscriptionEnd ?? ""
+        let debut = Self.dateHeure(manifestation.datesInscriptionStart, manifestation.horaireInscriptionStart)
+        let fin = Self.dateHeure(manifestation.datesInscriptionEnd, manifestation.horaireInscriptionEnd)
         if let start = Self.parse(manifestation.datesInscriptionStart, manifestation.horaireInscriptionStart), now < start {
             return .aVenir("Inscriptions ouvrent le \(debut)")
         }
@@ -394,13 +406,26 @@ struct ManifestationDetailView: View {
         return .ouvert(fin.isEmpty ? "Inscriptions ouvertes" : "Inscriptions ouvertes jusqu'au \(fin)")
     }
 
+    /// « 18/11/2026 - 23:59 » ; la date seule si l'heure manque.
+    private static func dateHeure(_ date: String?, _ heure: String?) -> String {
+        guard let date, !date.isEmpty else { return "" }
+        guard let h = heureCourte(heure) else { return date }
+        return "\(date) - \(h)"
+    }
+
+    /// « 23:59:00 » ou « 23:59 » → « 23:59 ».
+    private static func heureCourte(_ heure: String?) -> String? {
+        guard let h = heure?.trimmingCharacters(in: .whitespaces), h.count >= 5 else { return nil }
+        return String(h.prefix(5))
+    }
+
     private static func parse(_ date: String?, _ heure: String?) -> Date? {
         guard let date else { return nil }
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.timeZone = TimeZone(identifier: "Europe/Paris")
         f.dateFormat = "dd/MM/yyyy HH:mm"
-        return f.date(from: "\(date) \(heure ?? "00:00")")
+        return f.date(from: "\(date) \(heureCourte(heure) ?? "00:00")")
     }
 
     enum Statut {
@@ -543,12 +568,8 @@ struct ManifestationDetailView: View {
                 .padding(.vertical, 10)
                 .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             } else {
-                Button { ajouter(course) } label: {
-                    Label("Ajouter à l'agenda · \(plage)", systemImage: "calendar.badge.plus")
-                }
-                .buttonStyle(PrimaryButtonStyle())
-                Text(texteInclus)
-                    .font(.barlow(12)).foregroundStyle(Theme.muted)
+                ActionRow(titre: "Ajouter à l'agenda", sousTitre: "\(plage) · \(texteInclus)",
+                          icone: "calendar.badge.plus") { ajouter(course) }
             }
             if let infoAgenda { Text(infoAgenda).font(.barlow(13)).foregroundStyle(Theme.accent) }
             if let erreurAgenda { Text(erreurAgenda).font(.barlow(13)).foregroundStyle(Theme.danger) }
@@ -557,10 +578,10 @@ struct ManifestationDetailView: View {
 
     /// Ce que contiendra l'événement ; le trajet n'y est que si la position est déjà autorisée.
     private var texteInclus: String {
-        var elements = ["le lieu"]
-        if manifestation.gpxURL != nil { elements.append("le lien du tracé GPX") }
-        if trajet != nil || TrajetService.autorise { elements.append("le temps de trajet") }
-        return "L'événement agenda inclut " + elements.formatted(.list(type: .and, width: .standard).locale(Locale(identifier: "fr_FR"))) + "."
+        var elements = ["lieu"]
+        if manifestation.gpxURL != nil { elements.append("tracé GPX") }
+        if trajet != nil || TrajetService.autorise { elements.append("trajet") }
+        return elements.formatted(.list(type: .and, width: .standard).locale(Locale(identifier: "fr_FR"))) + " inclus"
     }
 
     private func ajouter(_ course: ConfigNiveau) {
@@ -647,9 +668,9 @@ struct ManifestationDetailView: View {
                 if trace.aProfil { profilAltimetrique(trace) }
                 if let fichierGPX {
                     ShareLink(item: fichierGPX) {
-                        Label("Télécharger le tracé GPX", systemImage: "arrow.down.circle")
+                        ActionRowLabel(titre: "Tracé GPX", sousTitre: "Télécharger ou envoyer vers une app GPS", icone: "arrow.down.circle")
                     }
-                    .buttonStyle(OutlineButtonStyle())
+                    .buttonStyle(ActionRowStyle())
                 }
             } else {
                 VStack(alignment: .leading, spacing: 4) {

@@ -25,8 +25,7 @@ struct ProfilView: View {
                     MentionNonOfficielle().card()
                 }
 
-                Button("Se déconnecter") { auth.logout() }
-                    .buttonStyle(PrimaryButtonStyle(danger: true))
+                ActionRow(titre: "Se déconnecter", icone: "rectangle.portrait.and.arrow.right", ton: .danger) { auth.logout() }
             }
             .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 120)
             .containerRelativeFrame(.horizontal)

@@ -5,6 +5,7 @@ import SwiftUI
 /// La carte bancaire est confirmée et saisie par l'utilisateur sur la page de la banque, jamais par l'app.
 struct InscriptionBloc: View {
     @Environment(AuthModel.self) private var auth
+    @Environment(SuiviCoursesStore.self) private var suivi
     let manifestation: Manifestation
     let course: ConfigNiveau
 
@@ -27,19 +28,14 @@ struct InscriptionBloc: View {
 
             case .validee:
                 // inscription validée, il ne reste que le paiement
-                Text("Inscription validée : il reste le paiement par carte bancaire.")
-                    .font(.barlow(13)).foregroundStyle(Theme.muted).multilineTextAlignment(.center)
-                Button { paiementOuvert = true } label: {
-                    Label(commande.map { "Payer \(euros($0.montant))" } ?? "Payer", systemImage: "creditcard")
-                }
-                .buttonStyle(PrimaryButtonStyle())
+                ActionRow(titre: commande.map { "Payer \(euros($0.montant))" } ?? "Payer",
+                          sousTitre: "Inscription validée · il reste le paiement par carte",
+                          icone: "creditcard", ton: .principal) { paiementOuvert = true }
 
             case .enregistree:
                 // inscription enregistrée mais parcours interrompu : on le reprend
-                Text("Ton inscription est enregistrée mais pas encore validée.")
-                    .font(.barlow(13)).foregroundStyle(Theme.muted).multilineTextAlignment(.center)
-                Button { Task { await validerEtPayer() } } label: { Label("Reprendre l'inscription", systemImage: "arrow.clockwise") }
-                    .buttonStyle(PrimaryButtonStyle())
+                ActionRow(titre: "Reprendre l'inscription", sousTitre: "Enregistrée mais pas encore validée",
+                          icone: "arrow.clockwise", ton: .principal) { Task { await validerEtPayer() } }
 
             case .chargement:
                 VStack(spacing: 8) {
@@ -49,14 +45,15 @@ struct InscriptionBloc: View {
                 .frame(maxWidth: .infinity, minHeight: 52)
 
             case .repos, .erreur:
-                Button { Task { await preparer() } } label: { Label("S'inscrire", systemImage: "square.and.pencil") }
-                    .buttonStyle(OutlineButtonStyle())
+                ActionRow(titre: "S'inscrire", sousTitre: "Tarif affiché avant confirmation · paiement CB",
+                          icone: "square.and.pencil", ton: .principal) { Task { await preparer() } }
                 if case .erreur(let message) = etat {
                     Text(message).font(.barlow(13)).foregroundStyle(Theme.danger).multilineTextAlignment(.center)
                 }
             }
         }
-        .sheet(isPresented: $paiementOuvert, onDismiss: { Task { await etatInitial() } }) {
+        // après le paiement : inscrit → validé dans le suivi des courses
+        .sheet(isPresented: $paiementOuvert, onDismiss: { Task { await etatInitial(); await suivi.actualiser(auth) } }) {
             PaiementWebView(url: UfolepClient.urlPaiement(commande))
         }
         .task { await etatInitial() }
@@ -131,9 +128,11 @@ struct InscriptionBloc: View {
         commande = commandes.first { $0.libelle.localizedCaseInsensitiveContains(manifestation.libelle) }
         if commande != nil {
             etat = .validee
+            Task { await suivi.actualiser(auth) }   // aucun / envie → inscrit, sans retarder le paiement
             paiementOuvert = true
         } else {
             etat = .inscrit   // gratuit : rien à payer
+            await suivi.actualiser(auth)
         }
     }
 
