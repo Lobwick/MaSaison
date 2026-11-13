@@ -137,33 +137,46 @@ extension View {
     }
 }
 
-/// Actions d'en-tête standardisées : notifications puis profil.
-struct TopRightProfileActions: View {
+/// En-tête standardisé : titre à gauche, notifications puis profil à droite.
+struct TitleAndProfileActions: View {
+    let title: String
     var photo: UIImage?
     var accent: Color = Theme.accent
+    @AppStorage("ongletSelectionne") private var onglet = 0
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "bell")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(Theme.textSoft)
-                .frame(width: 36, height: 36)
-                .background(Theme.surface2, in: Circle())
-                .overlay(Circle().stroke(Theme.line, lineWidth: 1))
-            Group {
-                if let photo {
-                    Image(uiImage: photo).resizable().scaledToFill()
-                } else {
-                    Image(systemName: "person.crop.circle.fill")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(accent.opacity(0.9))
+        HStack(alignment: .top, spacing: 10) {
+            Text(title).pageTitle()
+            Spacer()
+            HStack(spacing: 10) {
+                Image(systemName: "bell")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Theme.textSoft)
+                    .frame(width: 36, height: 36)
+                    .background(Theme.surface2, in: Circle())
+                    .overlay(Circle().stroke(Theme.line, lineWidth: 1))
+                Button {
+                    onglet = 4
+                } label: {
+                    Group {
+                        if let photo {
+                            Image(uiImage: photo).resizable().scaledToFill()
+                        } else {
+                            Image(systemName: "person.crop.circle.fill")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(accent.opacity(0.9))
+                        }
+                    }
+                    .frame(width: 36, height: 36)
+                    .background(accent.opacity(0.08), in: Circle())
+                    .clipShape(Circle())
+                    .overlay(Circle().stroke(Theme.line, lineWidth: 1))
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Ouvrir le profil")
             }
-            .frame(width: 36, height: 36)
-            .background(accent.opacity(0.08), in: Circle())
-            .clipShape(Circle())
-            .overlay(Circle().stroke(Theme.line, lineWidth: 1))
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

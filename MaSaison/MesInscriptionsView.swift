@@ -91,13 +91,7 @@ struct MesInscriptionsView: View {
 
     private var enteteAccueil: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 10) {
-                Text("ACCUEIL")
-                    .font(.cond(34))
-                    .foregroundStyle(Theme.text)
-                Spacer()
-                TopRightProfileActions(photo: photo, accent: homeAccent)
-            }
+            TitleAndProfileActions(title: "ACCUEIL", photo: photo, accent: homeAccent)
             .padding(.top, -10)
             Rectangle().fill(Theme.line).frame(height: 1)
         }
@@ -237,7 +231,10 @@ struct MesInscriptionsView: View {
             if let c = manifestation.adresse?.coordinate {
                 prochaineNavigationURL = navigationURL(for: c.latitude, longitude: c.longitude)
                 if let jour = prochaine.dateDebut, MeteoService.dansHorizon(jour) {
-                    meteoProchaine = try await MeteoService.prevision(latitude: c.latitude, longitude: c.longitude, jour: jour)
+                    let jourEntier = try await MeteoService.prevision(latitude: c.latitude, longitude: c.longitude, jour: jour)
+                    // restreinte au créneau des courses engagées (toutes si aucune ne correspond) plutôt qu'à la journée
+                    let plage = AgendaService.plage(manifestation: manifestation, courses: coursesEngagees(prochaine, dans: manifestation))
+                    meteoProchaine = plage.flatMap { p in jourEntier?.pendant(p) } ?? jourEntier
                 }
             }
             meteoManifestationID = prochaine.manifestationID
@@ -245,6 +242,15 @@ struct MesInscriptionsView: View {
             meteoProchaine = nil
             meteoManifestationID = prochaine.manifestationID
         }
+    }
+
+    /// Courses de la manifestation dont le niveau (« Adultes - 3e catégorie » → « 3e catégorie ») figure dans l'inscription.
+    private func coursesEngagees(_ inscription: Inscription, dans manifestation: Manifestation) -> [ConfigNiveau] {
+        let niveaux = Set(inscription.epreuves.flatMap(\.niveaux).map {
+            ($0.components(separatedBy: " - ").last ?? $0).trimmingCharacters(in: .whitespaces).lowercased()
+        })
+        let engagees = manifestation.configNiveaux.filter { niveaux.contains($0.niveau.libelle.lowercased()) }
+        return engagees.isEmpty ? manifestation.configNiveaux : engagees
     }
 
     private func chargerHorairesInscriptions() async {
@@ -417,12 +423,26 @@ private struct ProchaineCourseCard: View {
     }
 
     private func meteoResume(_ meteo: Meteo) -> some View {
-        HStack(spacing: 0) {
-            meteoCell("TEMP.", "\(Int(meteo.tempMin.rounded()))°/\(Int(meteo.tempMax.rounded()))°", icon: "thermometer.sun.fill", tint: Color(hex: 0xD97706), detail: meteo.libelle)
-            Divider().frame(height: 40)
-            meteoCell("PLUIE", "\(meteo.probaPluie)%", icon: "drop.fill", tint: Theme.secondary)
-            Divider().frame(height: 40)
-            meteoCell("VENT", "\(Int(meteo.ventKmh.rounded())) km/h", icon: "wind", tint: Color(hex: 0x2563EB))
+        let heure = Date.FormatStyle(date: .omitted, time: .shortened).locale(Locale(identifier: "fr_FR"))
+        let min = Int(meteo.tempMin.rounded()), max = Int(meteo.tempMax.rounded())
+        let pluie = meteo.pluieMm >= 0.1 ? String(format: "%.1f mm", meteo.pluieMm).replacingOccurrences(of: ".", with: ",") : "Sec"
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: meteo.symbole).symbolRenderingMode(.multicolor).font(.system(size: 26))
+                    .frame(width: 34)
+                Text(meteo.libelle).font(.barlow(14, .semibold)).foregroundStyle(Theme.text).lineLimit(1)
+                Spacer()
+                Text(meteo.plage.map { "\($0.start.formatted(heure)) – \($0.end.formatted(heure))" } ?? "Journée")
+                    .font(.barlow(11, .semibold)).foregroundStyle(Theme.muted)
+            }
+            HStack(spacing: 0) {
+                meteoCell("TEMP.", min == max ? "\(max)°" : "\(min)°/\(max)°", icon: "thermometer.medium", tint: Color(hex: 0xD97706))
+                Divider().frame(height: 40)
+                meteoCell("PLUIE", "\(meteo.probaPluie)%", icon: "cloud.rain.fill", tint: Theme.secondary, detail: pluie)
+                Divider().frame(height: 40)
+                meteoCell("VENT", "\(Int(meteo.ventKmh.rounded())) km/h", icon: "wind", tint: Color(hex: 0x2563EB),
+                          detail: meteo.rafalesKmh.map { "Rafales \(Int($0.rounded()))" })
+            }
         }
         .padding(10)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))

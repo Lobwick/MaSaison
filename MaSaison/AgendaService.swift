@@ -39,6 +39,14 @@ enum AgendaService {
         )
     }
 
+    /// Plage couverte par des courses, de la première convocation à la dernière arrivée ; `nil` si aucun horaire.
+    static func plage(manifestation: Manifestation, courses: [ConfigNiveau]) -> DateInterval? {
+        let creneaux = courses.compactMap { creneau(manifestation: manifestation, course: $0, echauffementMinutes: 0) }
+        guard let debut = creneaux.map({ min($0.appel, $0.depart) }).min(),
+              let fin = creneaux.map(\.fin).max(), fin > debut else { return nil }
+        return DateInterval(start: debut, end: fin)
+    }
+
     /// Crée l'événement et renvoie son identifiant.
     static func ajouter(manifestation: Manifestation, course: ConfigNiveau, echauffementMinutes: Int, trajet: Trajet? = nil) async throws -> String {
         guard let creneau = creneau(manifestation: manifestation, course: course, echauffementMinutes: echauffementMinutes) else {

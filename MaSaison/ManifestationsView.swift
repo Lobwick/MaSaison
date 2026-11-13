@@ -97,11 +97,7 @@ struct ManifestationsView: View {
                         if vueSelectionnee == .liste && !afficherSelecteurVue {
                             enteteCoursesRecherche
                         } else {
-                            HStack(alignment: .top, spacing: 10) {
-                                Text(titrePage).pageTitle()
-                                Spacer()
-                                TopRightProfileActions(photo: photo, accent: Theme.accent)
-                            }
+                            TitleAndProfileActions(title: titrePage, photo: photo, accent: Theme.accent)
                             .padding(.top, -4)
 
                             HStack(spacing: 10) {
@@ -119,13 +115,6 @@ struct ManifestationsView: View {
                                     Spacer(minLength: 0)
                                 }
                                 boutonFiltres
-                            }
-                        }
-
-                        if nombreFiltres > 0 && vueSelectionnee != .carte && vueSelectionnee != .calendrier {
-                            FlowPills {
-                                if !sportCodes.isEmpty { Pill(text: store.resumeSports(sportCodes), fg: Theme.accent, bg: Theme.accent.opacity(0.13)) }
-                                if !departementIDs.isEmpty { Pill(text: "Dép. " + store.resumeDepartements(departementIDs), fg: Theme.accent, bg: Theme.accent.opacity(0.13)) }
                             }
                         }
 
@@ -269,11 +258,7 @@ struct ManifestationsView: View {
 
     private var enteteCoursesRecherche: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 10) {
-                Text("COURSES").pageTitle()
-                Spacer()
-                TopRightProfileActions(photo: photo, accent: Theme.accent)
-            }
+            TitleAndProfileActions(title: "COURSES", photo: photo, accent: Theme.accent)
             .padding(.top, -4)
 
             HStack(spacing: 6) {
@@ -395,10 +380,12 @@ struct ManifestationsView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .ignoresSafeArea(edges: .bottom)
 
-                    HStack {
-                        Text(titrePage).pageTitle()
-                        Spacer()
-                        boutonFiltresCarte
+                    VStack(alignment: .leading, spacing: 8) {
+                        TitleAndProfileActions(title: titrePage, photo: photo, accent: Theme.accent)
+                        HStack {
+                            Spacer()
+                            boutonFiltresCarte
+                        }
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 16)
@@ -693,20 +680,22 @@ struct ManifestationsView: View {
             if estCalendrierPleinEcran {
                 ScrollViewReader { proxy in
                     VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Text(titrePage).pageTitle()
-                            Spacer()
-                            boutonAujourdhui {
-                                let aujourdHui = Calendar.current.startOfDay(for: Date())
-                                let mois = Self.debutDuMois(aujourdHui)
-                                jourSelectionne = aujourdHui
-                                moisCourant = mois
-                                jourPopupCalendrier = nil
-                                withAnimation(.easeInOut(duration: 0.25)) {
-                                    proxy.scrollTo(cleMois(mois), anchor: .top)
+                        VStack(alignment: .leading, spacing: 8) {
+                            TitleAndProfileActions(title: titrePage, photo: photo, accent: Theme.accent)
+                            HStack {
+                                Spacer()
+                                boutonAujourdhui {
+                                    let aujourdHui = Calendar.current.startOfDay(for: Date())
+                                    let mois = Self.debutDuMois(aujourdHui)
+                                    jourSelectionne = aujourdHui
+                                    moisCourant = mois
+                                    jourPopupCalendrier = nil
+                                    withAnimation(.easeInOut(duration: 0.25)) {
+                                        proxy.scrollTo(cleMois(mois), anchor: .top)
+                                    }
                                 }
+                                boutonFiltres
                             }
-                            boutonFiltres
                         }
                         .padding(.horizontal, 20)
                         .padding(.top, 24)

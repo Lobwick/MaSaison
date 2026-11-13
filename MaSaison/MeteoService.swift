@@ -12,6 +12,42 @@ struct Meteo {
     let probaPluie: Int
     let pluieMm: Double
     let ventKmh: Double
+    /// Rafales maximales, en km/h (si connues).
+    var rafalesKmh: Double?
+    /// Prévisions heure par heure du jour, pour restreindre la météo au créneau de la course.
+    var heures: [MeteoHeure] = []
+    /// Créneau couvert par la prévision ; `nil` pour la journée entière.
+    var plage: DateInterval?
+
+    /// Météo restreinte aux heures qui chevauchent `intervalle` ; `self` si aucune heure ne correspond.
+    func pendant(_ intervalle: DateInterval) -> Meteo {
+        let h = heures.filter { $0.date < intervalle.end && $0.date.addingTimeInterval(3600) > intervalle.start }
+        guard let premiere = h.first else { return self }
+        let temps = h.map(\.temperature)
+        return Meteo(
+            libelle: premiere.libelle,
+            symbole: premiere.symbole,
+            tempMin: temps.min() ?? tempMin,
+            tempMax: temps.max() ?? tempMax,
+            probaPluie: h.map(\.probaPluie).max() ?? probaPluie,
+            pluieMm: h.map(\.pluieMm).reduce(0, +),
+            ventKmh: h.map(\.ventKmh).max() ?? ventKmh,
+            rafalesKmh: h.compactMap(\.rafalesKmh).max(),
+            heures: h,
+            plage: intervalle)
+    }
+}
+
+/// Prévision d'une heure (début de l'heure dans `date`).
+struct MeteoHeure {
+    let date: Date
+    let libelle: String
+    let symbole: String
+    let temperature: Double
+    let probaPluie: Int
+    let pluieMm: Double
+    let ventKmh: Double
+    let rafalesKmh: Double?
 }
 
 /// Mentions d'attribution exigées par Apple pour afficher des données WeatherKit.
@@ -51,7 +87,9 @@ enum MeteoService {
         guard dansHorizon(jour), let lendemain = calendrier.date(byAdding: .day, value: 1, to: cible) else { return nil }
 
         let lieu = CLLocation(latitude: latitude, longitude: longitude)
-        let jours = try await WeatherService.shared.weather(for: lieu, including: .daily(startDate: cible, endDate: lendemain))
+        let (jours, heures) = try await WeatherService.shared.weather(for: lieu,
+                                                                      including: .daily(startDate: cible, endDate: lendemain),
+                                                                      .hourly(startDate: cible, endDate: lendemain))
         guard let j = jours.forecast.first(where: { calendrier.isDate($0.date, inSameDayAs: cible) }) ?? jours.forecast.first else {
             throw MeteoErreur.jourAbsent
         }
@@ -63,7 +101,19 @@ enum MeteoService {
             tempMax: j.highTemperature.converted(to: .celsius).value,
             probaPluie: Int((j.precipitationChance * 100).rounded()),
             pluieMm: j.precipitationAmount.converted(to: .millimeters).value,
-            ventKmh: j.wind.speed.converted(to: .kilometersPerHour).value)
+            ventKmh: j.wind.speed.converted(to: .kilometersPerHour).value,
+            rafalesKmh: j.wind.gust?.converted(to: .kilometersPerHour).value,
+            heures: heures.forecast.map { h in
+                MeteoHeure(
+                    date: h.date,
+                    libelle: h.condition.description,
+                    symbole: h.symbolName,
+                    temperature: h.temperature.converted(to: .celsius).value,
+                    probaPluie: Int((h.precipitationChance * 100).rounded()),
+                    pluieMm: h.precipitationAmount.converted(to: .millimeters).value,
+                    ventKmh: h.wind.speed.converted(to: .kilometersPerHour).value,
+                    rafalesKmh: h.wind.gust?.converted(to: .kilometersPerHour).value)
+            })
     }
 
     static func attribution() async -> MeteoAttribution? {

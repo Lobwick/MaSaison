@@ -257,24 +257,43 @@ struct ManifestationDetailView: View {
         }
     }
 
-    private func meteoCarte(_ m: Meteo) -> some View {
+    /// Créneau des courses (de l'appel à l'arrivée) : les miennes, sinon toutes ; `nil` si aucun horaire.
+    private var creneauCourses: DateInterval? {
+        AgendaService.plage(manifestation: manifestation, courses: (miennes.isEmpty ? toutes : miennes).map(\.course))
+    }
+
+    private func meteoCarte(_ jour: Meteo) -> some View {
+        let m = creneauCourses.map { jour.pendant($0) } ?? jour
         func degres(_ t: Double) -> String { "\(Int(t.rounded()))°" }
-        return VStack(alignment: .leading, spacing: 12) {
-            Eyebrow("MÉTÉO")
+        let heure = Date.FormatStyle(date: .omitted, time: .shortened).locale(Locale(identifier: "fr_FR"))
+        let temperature = Int(m.tempMin.rounded()) == Int(m.tempMax.rounded())
+            ? degres(m.tempMax) : "\(degres(m.tempMin)) – \(degres(m.tempMax))"
+        let pluie = m.pluieMm >= 0.1 ? String(format: "%.1f mm", m.pluieMm).replacingOccurrences(of: ".", with: ",") : "Sec"
+        let rafales = m.rafalesKmh.map { "Rafales \(Int($0.rounded()))" } ?? "km/h"
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Eyebrow("MÉTÉO")
+                Spacer()
+                Text(m.plage.map { "\($0.start.formatted(heure)) – \($0.end.formatted(heure))" } ?? "Journée")
+                    .font(.barlow(12, .semibold)).foregroundStyle(Theme.muted)
+            }
             HStack(spacing: 14) {
-                Image(systemName: m.symbole).symbolRenderingMode(.multicolor).font(.system(size: 38))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(m.libelle).font(.barlow(16, .semibold)).foregroundStyle(Theme.text)
-                    Text("\(degres(m.tempMin)) / \(degres(m.tempMax))").font(.cond(30)).foregroundStyle(Theme.text)
+                Image(systemName: m.symbole).symbolRenderingMode(.multicolor).font(.system(size: 44))
+                    .frame(width: 56)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(temperature).font(.cond(36)).foregroundStyle(Theme.text)
+                    Text(m.libelle).font(.barlow(15, .semibold)).foregroundStyle(Theme.textSoft)
                 }
                 Spacer()
             }
-            HStack(spacing: 10) {
-                tuile("PLUIE", "\(m.probaPluie)", suffixe: "%")
-                tuile("VENT", "\(Int(m.ventKmh.rounded()))", suffixe: "km/h")
+            HStack(spacing: 8) {
+                tuileMeteo(icone: "thermometer.medium", couleur: .orange, titre: "TEMP.", valeur: degres(m.tempMax), detail: "min \(degres(m.tempMin))")
+                tuileMeteo(icone: "cloud.rain.fill", couleur: .blue, titre: "PLUIE", valeur: "\(m.probaPluie)%", detail: pluie)
+                tuileMeteo(icone: "wind", couleur: .teal, titre: "VENT", valeur: "\(Int(m.ventKmh.rounded()))", detail: rafales)
             }
             HStack(spacing: 10) {
-                Text("Prévision pour le jour de l'épreuve").font(.barlow(12)).foregroundStyle(Theme.muted)
+                Text(m.plage == nil ? "Prévision pour le jour de l'épreuve" : "Prévision pendant la course")
+                    .font(.barlow(12)).foregroundStyle(Theme.muted)
                 Spacer()
                 if let mention = mentionMeteo {
                     VStack(alignment: .trailing, spacing: 2) {
@@ -292,6 +311,24 @@ struct ManifestationDetailView: View {
         .accessibilityElement(children: .combine)
     }
 
+    private func tuileMeteo(icone: String, couleur: Color, titre: String, valeur: String, detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 5) {
+                Image(systemName: icone).symbolRenderingMode(.hierarchical).foregroundStyle(couleur)
+                    .font(.system(size: 13, weight: .semibold))
+                Text(titre).font(.barlow(10, .semibold)).tracking(1).foregroundStyle(Theme.muted)
+            }
+            Text(valeur).font(.cond(26)).foregroundStyle(Theme.text)
+                .lineLimit(1).minimumScaleFactor(0.7)
+            Text(detail).font(.barlow(11)).foregroundStyle(Theme.muted)
+                .lineLimit(1).minimumScaleFactor(0.8)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.line, lineWidth: 1))
+    }
+
     // MARK: en-tête
 
     private var barreNavigationDetail: some View {
@@ -304,12 +341,7 @@ struct ManifestationDetailView: View {
                     .foregroundStyle(Theme.accent)
             }
             .buttonStyle(.plain)
-            Text("DÉTAIL")
-                .font(.cond(34))
-                .foregroundStyle(Theme.text)
-
-            Spacer()
-            TopRightProfileActions(photo: photoProfil, accent: Theme.accent)
+            TitleAndProfileActions(title: "DÉTAIL", photo: photoProfil, accent: Theme.accent)
         }
         .padding(.top, -4)
     }

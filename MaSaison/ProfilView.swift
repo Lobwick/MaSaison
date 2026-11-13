@@ -48,13 +48,7 @@ struct ProfilView: View {
 
     private var entete: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 10) {
-                Text("PROFIL")
-                    .font(.cond(34))
-                    .foregroundStyle(Theme.text)
-                Spacer()
-                TopRightProfileActions(photo: photo, accent: Theme.accent)
-            }
+            TitleAndProfileActions(title: "PROFIL", photo: photo, accent: Theme.accent)
             HStack(spacing: 16) {
                 Group {
                     if let photo {
