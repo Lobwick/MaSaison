@@ -12,7 +12,7 @@ Ma Saison Sport est une application **non officielle**, réalisée bénévolemen
 
 ## Agenda
 
-L'application demande un accès en **écriture seule** à ton calendrier, pour y ajouter la course que tu choisis, avec son lieu et ses horaires. Elle ne lit pas tes événements.
+L'application demande un accès en **écriture seule** à ton calendrier, pour y ajouter la course que tu choisis, avec son lieu et ses horaires. Elle ne lit pas tes événements. Seule exception : si tu touches « Mettre à jour le temps de trajet » sur une course déjà ajoutée, l'application te demande l'accès complet au calendrier, uniquement pour retrouver cet événement et y changer la ligne de trajet. Elle ne lit pas les autres.
 
 ## Cartes et lieux
 

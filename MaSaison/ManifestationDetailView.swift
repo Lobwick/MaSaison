@@ -23,6 +23,8 @@ struct ManifestationDetailView: View {
     @State private var meteoCharge = false
     @State private var trajet: Trajet?
     @State private var trajetEnCours = false
+    @State private var infoAgenda: String?
+    @State private var majTrajetEnCours = false
     @State private var mentionMeteo: MeteoAttribution?
     @Environment(\.colorScheme) private var schema
 
@@ -342,24 +344,70 @@ struct ManifestationDetailView: View {
                 Link("Ouvrir dans Calendrier", destination: URL(string: "calshow:\(creneau.debut.timeIntervalSinceReferenceDate)")!)
                     .font(.cond(15, .semibold)).tracking(1.5).textCase(.uppercase).foregroundStyle(Theme.textSoft)
                 #endif
+                if manifestation.adresse?.coordinate != nil {
+                    Button { majTrajet(course) } label: {
+                        Label(majTrajetEnCours ? "Calcul du trajet…" : "Mettre à jour le temps de trajet", systemImage: "car.circle")
+                    }
+                    .buttonStyle(OutlineButtonStyle())
+                    .disabled(majTrajetEnCours)
+                }
             } else {
                 Button { ajouter(course) } label: {
                     Label("Ajouter à l'agenda · \(plage)", systemImage: "calendar.badge.plus")
                 }
                 .buttonStyle(PrimaryButtonStyle())
-                Text(manifestation.gpxURL != nil ? "L'événement agenda inclut le lieu et le lien du tracé GPX." : "L'événement agenda inclut le lieu.")
+                Text(texteInclus)
                     .font(.barlow(12)).foregroundStyle(Theme.muted)
             }
+            if let infoAgenda { Text(infoAgenda).font(.barlow(13)).foregroundStyle(Theme.accent) }
             if let erreurAgenda { Text(erreurAgenda).font(.barlow(13)).foregroundStyle(Theme.danger) }
         }
     }
 
+    /// Ce que contiendra l'événement ; le trajet n'y est que si la position est déjà autorisée.
+    private var texteInclus: String {
+        var elements = ["le lieu"]
+        if manifestation.gpxURL != nil { elements.append("le lien du tracé GPX") }
+        if trajet != nil || TrajetService.autorise { elements.append("le temps de trajet") }
+        return "L'événement agenda inclut " + elements.formatted(.list(type: .and, width: .standard).locale(Locale(identifier: "fr_FR"))) + "."
+    }
+
     private func ajouter(_ course: ConfigNiveau) {
         erreurAgenda = nil
+        infoAgenda = nil
         Task {
             do {
-                let id = try await AgendaService.ajouter(manifestation: manifestation, course: course, echauffementMinutes: echauffement)
+                // trajet : seulement si la position est déjà autorisée (pas de nouvelle invite au moment d'ajouter)
+                if trajet == nil, TrajetService.autorise { await calculerTrajet() }
+                let id = try await AgendaService.ajouter(manifestation: manifestation, course: course, echauffementMinutes: echauffement, trajet: trajet)
                 agenda.enregistrer(manifestation: manifestation.id, course: course.id, identifiant: id)
+            } catch {
+                erreurAgenda = error.localizedDescription
+            }
+        }
+    }
+
+    /// Recalcule le trajet depuis ma position actuelle et met à jour l'événement déjà créé.
+    private func majTrajet(_ course: ConfigNiveau) {
+        erreurAgenda = nil
+        infoAgenda = nil
+        guard let c = manifestation.adresse?.coordinate,
+              let identifiant = agenda.identifiant(manifestation: manifestation.id, course: course.id) else { return }
+        majTrajetEnCours = true
+        Task {
+            defer { majTrajetEnCours = false }
+            guard let nouveau = await TrajetService.trajet(versLatitude: c.latitude, longitude: c.longitude) else {
+                erreurAgenda = "Position indisponible : autorise la localisation dans Réglages pour calculer le trajet."
+                return
+            }
+            trajet = nouveau
+            do {
+                try await AgendaService.mettreAJourTrajet(identifiant: identifiant, manifestation: manifestation, course: course,
+                                                         echauffementMinutes: echauffement, trajet: nouveau)
+                infoAgenda = "Trajet mis à jour : \(nouveau.texte)."
+            } catch AgendaError.evenementIntrouvable {
+                agenda.retirer(manifestation: manifestation.id, course: course.id)
+                erreurAgenda = AgendaError.evenementIntrouvable.localizedDescription
             } catch {
                 erreurAgenda = error.localizedDescription
             }
