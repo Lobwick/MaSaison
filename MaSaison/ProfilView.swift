@@ -12,7 +12,6 @@ struct ProfilView: View {
     @State private var anciennesOuvert = false
 
     var body: some View {
-        @Bindable var store = store
         ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: 22) {
                 entete
@@ -25,56 +24,30 @@ struct ProfilView: View {
                     if !anciennesCartes.isEmpty { anciennesCartesBloc }
                 }
 
-                section("RECHERCHE DE MANIFESTATIONS") {
-                    AstuceView(tip: AppTips.profil)
-                    filtreRow("Sport par défaut", valeur: store.resumeSports(store.sportsParDefaut), actif: !store.sportsParDefaut.isEmpty,
-                              modifier: MultiSelectView.sports(store.sports, selection: $store.sportsParDefaut),
-                              supprimer: { store.sportsParDefaut = [] })
-                    filtreRow("Départements par défaut", valeur: store.resumeDepartements(store.departementsParDefaut), actif: !store.departementsParDefaut.isEmpty,
-                              modifier: MultiSelectView.departements(store.departements, selection: $store.departementsParDefaut),
-                              supprimer: { store.departementsParDefaut = [] })
-                    VStack(alignment: .leading, spacing: 6) {
-                        Button {
-                            store.retablir(cartes: cartes.cartes)
+                section("RÉGLAGES ET PRÉFÉRENCES") {
+                    VStack(spacing: 10) {
+                        NavigationLink {
+                            ReglagesManifestationsView()
                         } label: {
-                            Label("Rétablir les filtres par défaut", systemImage: "arrow.counterclockwise")
-                                .font(.cond(15)).tracking(1.5).textCase(.uppercase).foregroundStyle(Theme.textSoft)
-                                .frame(maxWidth: .infinity, minHeight: 44)
+                            ReglageLinkCard(
+                                icone: "slider.horizontal.3",
+                                titre: "Filtres de manifestation",
+                                sousTitre: resumeManifestations
+                            )
                         }
-                        Text("Remet les départements et le sport d'origine (déduits de vos cartes) après une suppression ou une modification.")
-                            .font(.barlow(12)).foregroundStyle(Theme.muted).multilineTextAlignment(.center)
-                            .frame(maxWidth: .infinity)
-                    }
-                }
+                        .buttonStyle(.plain)
 
-                section("AGENDA") {
-                    VStack(spacing: 0) {
-                        HStack {
-                            Text("Bouton « Ajouter à l'agenda »").font(.barlow(16, .semibold)).foregroundStyle(Theme.text)
-                            Spacer()
-                            Toggle("", isOn: $boutonAgenda).labelsHidden().tint(Theme.accent)
+                        NavigationLink {
+                            ReglagesAgendaView()
+                        } label: {
+                            ReglageLinkCard(
+                                icone: "calendar.badge.clock",
+                                titre: "Synchronisation Agenda",
+                                sousTitre: resumeAgenda
+                            )
                         }
-                        .padding(16)
-                        Divider().overlay(Theme.line)
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Échauffement").font(.barlow(16, .semibold)).foregroundStyle(Theme.text)
-                                Text("Avant l'heure d'appel").font(.barlow(12)).foregroundStyle(Theme.muted)
-                            }
-                            Spacer()
-                            HStack(spacing: 10) {
-                                pas("minus", "Réduire l'échauffement") { echauffement = max(0, echauffement - 5) }
-                                Text(dureeTexte(echauffement)).font(.cond(26)).foregroundStyle(Theme.text).frame(minWidth: 64)
-                                pas("plus", "Augmenter l'échauffement") { echauffement = min(240, echauffement + 5) }
-                            }
-                        }
-                        .padding(16)
-                        .disabled(!boutonAgenda).opacity(boutonAgenda ? 1 : 0.4)
+                        .buttonStyle(.plain)
                     }
-                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Theme.line, lineWidth: 1))
-                    Text("Exemple : appel à 13:45, échauffement à \(exemple). Ce créneau est ajouté à l'agenda.")
-                        .font(.barlow(12)).foregroundStyle(Theme.muted)
                 }
 
                 section("À PROPOS") {
@@ -168,6 +141,88 @@ struct ProfilView: View {
         }
     }
 
+    private func dureeTexte(_ minutes: Int) -> String {
+        minutes < 60 ? "\(minutes) min" : String(format: "%d h %02d", minutes / 60, minutes % 60)
+    }
+
+    private var resumeManifestations: String {
+        let sports = store.resumeSports(store.sportsParDefaut)
+        let deps = store.resumeDepartements(store.departementsParDefaut)
+        return "\(sports) • Dép. \(deps)"
+    }
+
+    private var resumeAgenda: String {
+        guard boutonAgenda else { return "Inactif" }
+        return "Actif (+\(dureeTexte(echauffement)) échauffement)"
+    }
+}
+
+private struct ReglageLinkCard: View {
+    let icone: String
+    let titre: String
+    let sousTitre: String
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: icone)
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(Theme.accent)
+                .frame(width: 46, height: 46)
+                .background(Theme.accent.opacity(0.12), in: Circle())
+            VStack(alignment: .leading, spacing: 3) {
+                Text(titre)
+                    .font(.cond(24, .semibold))
+                    .foregroundStyle(Theme.text)
+                    .multilineTextAlignment(.leading)
+                Text(sousTitre)
+                    .font(.barlow(14, .semibold))
+                    .foregroundStyle(Theme.muted)
+            }
+            Spacer()
+            Image(systemName: "chevron.right")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Theme.faint)
+        }
+        .card(padding: 14)
+    }
+}
+
+private struct ReglagesManifestationsView: View {
+    @Environment(FiltresStore.self) private var store
+    @Environment(CartesStore.self) private var cartes
+
+    var body: some View {
+        @Bindable var store = store
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                Eyebrow("RÉGLAGES MANIFESTATIONS")
+                AstuceView(tip: AppTips.profil)
+                filtreRow("Sport par défaut", valeur: store.resumeSports(store.sportsParDefaut), actif: !store.sportsParDefaut.isEmpty,
+                          modifier: MultiSelectView.sports(store.sports, selection: $store.sportsParDefaut),
+                          supprimer: { store.sportsParDefaut = [] })
+                filtreRow("Départements par défaut", valeur: store.resumeDepartements(store.departementsParDefaut), actif: !store.departementsParDefaut.isEmpty,
+                          modifier: MultiSelectView.departements(store.departements, selection: $store.departementsParDefaut),
+                          supprimer: { store.departementsParDefaut = [] })
+                VStack(alignment: .leading, spacing: 6) {
+                    Button {
+                        store.retablir(cartes: cartes.cartes)
+                    } label: {
+                        Label("Rétablir les filtres par défaut", systemImage: "arrow.counterclockwise")
+                            .font(.cond(15)).tracking(1.5).textCase(.uppercase).foregroundStyle(Theme.textSoft)
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    Text("Remet les départements et le sport d'origine (déduits de vos cartes) après une suppression ou une modification.")
+                        .font(.barlow(12)).foregroundStyle(Theme.muted).multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .padding(.horizontal, 20).padding(.vertical, 24)
+        }
+        .screenBackground()
+        .navigationTitle("Manifestations")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
     private func filtreRow<Destination: View>(_ titre: String, valeur: String, actif: Bool, modifier: Destination, supprimer: @escaping () -> Void) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -190,6 +245,50 @@ struct ProfilView: View {
             }
         }
         .card(padding: 16)
+    }
+}
+
+private struct ReglagesAgendaView: View {
+    @AppStorage("boutonAgenda") private var boutonAgenda = true
+    @AppStorage("echauffementMinutes") private var echauffement = 60
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                Eyebrow("RÉGLAGES AGENDA")
+                VStack(spacing: 0) {
+                    HStack {
+                        Text("Bouton « Ajouter à l'agenda »").font(.barlow(16, .semibold)).foregroundStyle(Theme.text)
+                        Spacer()
+                        Toggle("", isOn: $boutonAgenda).labelsHidden().tint(Theme.accent)
+                    }
+                    .padding(16)
+                    Divider().overlay(Theme.line)
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Échauffement").font(.barlow(16, .semibold)).foregroundStyle(Theme.text)
+                            Text("Avant l'heure d'appel").font(.barlow(12)).foregroundStyle(Theme.muted)
+                        }
+                        Spacer()
+                        HStack(spacing: 10) {
+                            pas("minus", "Réduire l'échauffement") { echauffement = max(0, echauffement - 5) }
+                            Text(dureeTexte(echauffement)).font(.cond(26)).foregroundStyle(Theme.text).frame(minWidth: 64)
+                            pas("plus", "Augmenter l'échauffement") { echauffement = min(240, echauffement + 5) }
+                        }
+                    }
+                    .padding(16)
+                    .disabled(!boutonAgenda).opacity(boutonAgenda ? 1 : 0.4)
+                }
+                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Theme.line, lineWidth: 1))
+                Text("Exemple : appel à 13:45, échauffement à \(exemple). Ce créneau est ajouté à l'agenda.")
+                    .font(.barlow(12)).foregroundStyle(Theme.muted)
+            }
+            .padding(.horizontal, 20).padding(.vertical, 24)
+        }
+        .screenBackground()
+        .navigationTitle("Agenda")
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     private func pas(_ icone: String, _ label: String, action: @escaping () -> Void) -> some View {

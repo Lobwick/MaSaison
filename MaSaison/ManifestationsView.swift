@@ -37,7 +37,7 @@ struct ManifestationsView: View {
     @State private var chargementSuite = false
     @State private var generation = 0
     @State private var pointCarteSelectionneID: String?
-    @State private var moisCourant = Self.debutDuMois(Date())
+    @State private var moisCourant = Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: Date())) ?? Calendar.current.startOfDay(for: Date())
     @State private var jourSelectionne = Calendar.current.startOfDay(for: Date())
     @State private var positionCarte: MapCameraPosition = .region(Self.regionFrance)
     @State private var carteCentreeSurMoi = false
@@ -1129,7 +1129,7 @@ struct ManifestationsView: View {
         span: MKCoordinateSpan(latitudeDelta: 9.5, longitudeDelta: 9.5)
     )
 
-    private static func debutDuMois(_ date: Date) -> Date {
+    private nonisolated static func debutDuMois(_ date: Date) -> Date {
         Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: date)) ?? Calendar.current.startOfDay(for: date)
     }
 

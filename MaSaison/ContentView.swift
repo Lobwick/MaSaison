@@ -55,6 +55,8 @@ struct MainTabView: View {
             }
         }
         .tint(Theme.accent)
+        .toolbarBackground(.ultraThinMaterial, for: .tabBar)
+        .toolbarBackground(.visible, for: .tabBar)
         .task {
             await filtres.loadIfNeeded(auth: auth)
             await cartes.load(auth: auth)

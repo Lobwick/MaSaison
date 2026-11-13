@@ -1,25 +1,22 @@
-import CoreText
 import SwiftUI
 
-/// Direction visuelle sombre (voir la maquette Claude Design) : fond #0B0D10, cartes anthracite, un accent menthe.
+/// Direction visuelle claire inspirée des apps Apple : fond blanc, cartes en matériau, accent système.
 enum Theme {
-    static let bg = Color(hex: 0x0B0D10)
-    static let surface = Color(hex: 0x14181D)
-    static let surface2 = Color(hex: 0x1C2229)
-    static let line = Color(hex: 0x232A32)
-    static let text = Color(hex: 0xF2F5F7)
-    static let textSoft = Color(hex: 0xC9D1D8)
-    static let muted = Color(hex: 0x8C97A3)
-    static let faint = Color(hex: 0x5A6672)
-    static let accent = Color(hex: 0x2DE2A6)
-    static let danger = Color(hex: 0xFF4D5E)
-    static let warning = Color(hex: 0xFFB020)
+    static let bg = Color(hex: 0xF6F7FB)
+    static let surface = Color.white.opacity(0.72)
+    static let surface2 = Color.white.opacity(0.88)
+    static let line = Color.black.opacity(0.09)
+    static let text = Color(hex: 0x111318)
+    static let textSoft = Color(hex: 0x2B2F36)
+    static let muted = Color(hex: 0x6B7380)
+    static let faint = Color(hex: 0x98A0AD)
+    static let accent = Color.blue
+    static let danger = Color.red
+    static let warning = Color.orange
 
-    /// Enregistre Barlow / Barlow Condensed (fichiers .ttf du bundle) sans passer par Info.plist.
+    /// Plus de police custom : on garde la typo SF Pro native.
     static func registerFonts() {
-        for url in Bundle.main.urls(forResourcesWithExtension: "ttf", subdirectory: nil) ?? [] {
-            CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
-        }
+        // no-op
     }
 }
 
@@ -32,24 +29,24 @@ extension Color {
 extension Font {
     enum Poids { case medium, semibold, bold }
 
-    /// Barlow Condensed : titres, chiffres, libellés en majuscules.
+    /// Titres/chiffres style Apple (SF Pro, design rounded).
     static func cond(_ size: CGFloat, _ poids: Poids = .bold) -> Font {
-        let nom = switch poids {
-        case .medium: "BarlowCondensed-Medium"
-        case .semibold: "BarlowCondensed-SemiBold"
-        case .bold: "BarlowCondensed-Bold"
+        let weight: Font.Weight = switch poids {
+        case .medium: .medium
+        case .semibold: .semibold
+        case .bold: .bold
         }
-        return .custom(nom, size: size, relativeTo: .title)
+        return .system(size: size, weight: weight, design: .rounded)
     }
 
-    /// Barlow : texte courant.
+    /// Texte courant style Apple (SF Pro).
     static func barlow(_ size: CGFloat, _ poids: Poids = .medium) -> Font {
-        let nom = switch poids {
-        case .medium: "Barlow-Regular"
-        case .semibold: "Barlow-Medium"
-        case .bold: "Barlow-SemiBold"
+        let weight: Font.Weight = switch poids {
+        case .medium: .regular
+        case .semibold: .semibold
+        case .bold: .bold
         }
-        return .custom(nom, size: size, relativeTo: .body)
+        return .system(size: size, weight: weight, design: .default)
     }
 }
 
@@ -102,11 +99,11 @@ struct StatusTag: View {
 }
 
 extension View {
-    /// Carte anthracite arrondie.
+    /// Carte « liquid glass ».
     func card(border: Color = Theme.line, radius: CGFloat = 20, padding: CGFloat = 16) -> some View {
         self.padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.surface, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous).stroke(border, lineWidth: 1))
     }
 
@@ -114,9 +111,9 @@ extension View {
         background(Theme.bg.ignoresSafeArea())
     }
 
-    /// Titre de page : Barlow Condensed 40, majuscules.
+    /// Titre de page style Apple.
     func pageTitle() -> some View {
-        font(.cond(40)).textCase(.uppercase).foregroundStyle(Theme.text)
+        font(.system(size: 56, weight: .bold, design: .rounded)).foregroundStyle(Theme.text)
     }
 }
 
@@ -126,10 +123,10 @@ struct PrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.cond(17)).tracking(1.5).textCase(.uppercase)
-            .foregroundStyle(danger ? Theme.danger : Theme.bg)
+            .foregroundStyle(danger ? Theme.danger : Color.white)
             .frame(maxWidth: .infinity, minHeight: 52)
             .background(danger ? .clear : Theme.accent, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay { if danger { RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color(hex: 0x4A2229), lineWidth: 1) } }
+            .overlay { if danger { RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.danger.opacity(0.35), lineWidth: 1) } }
             .opacity(configuration.isPressed ? 0.8 : 1)
     }
 }
@@ -153,12 +150,13 @@ struct IconButton: View {
     let action: () -> Void
 
     var body: some View {
+        let fond = danger ? AnyShapeStyle(Color.clear) : AnyShapeStyle(.ultraThinMaterial)
         Button(action: action) {
             Image(systemName: systemImage).font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(danger ? Theme.danger : Theme.text)
                 .frame(width: 44, height: 44)
-                .background(danger ? .clear : Theme.surface2, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay { if danger { RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color(hex: 0x4A2229), lineWidth: 1) } }
+                .background(fond, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay { if danger { RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.danger.opacity(0.35), lineWidth: 1) } }
         }
         .accessibilityLabel(label)
     }
