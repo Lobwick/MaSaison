@@ -18,12 +18,15 @@ struct ManifestationDetailView: View {
     @State private var autresOuvert = false
     @State private var erreurAgenda: String?
     @State private var meteo: Meteo?
+    @State private var erreurMeteo: String?
+    @State private var traceCharge = false
+    @State private var meteoCharge = false
     @State private var mentionMeteo: MeteoAttribution?
     @Environment(\.colorScheme) private var schema
 
     var body: some View {
         ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: 22) {
+            LazyVStack(alignment: .leading, spacing: 22) {
                 entete
 
                 if !miennes.isEmpty { AstuceView(tip: AppTips.detail) }
@@ -42,7 +45,7 @@ struct ManifestationDetailView: View {
                     }
                 }
 
-                if let meteo { meteoCarte(meteo) }
+                if meteoDisponible { meteoSection }
 
                 lieuEtTrace
 
@@ -65,7 +68,10 @@ struct ManifestationDetailView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+        // trois chargements indépendants, lancés dès l'ouverture : aucun n'attend les autres
         .task { await charger() }
+        .task { await chargerTrace() }
+        .task { await chargerMeteo() }
     }
 
     // MARK: données
@@ -82,28 +88,61 @@ struct ManifestationDetailView: View {
     private var autres: [(groupe: String, course: ConfigNiveau)] { toutes.filter { !cartes.correspond(course: $0.course, in: manifestation) } }
 
     private func charger() async {
-        async let prevision: Meteo? = chargerMeteo()
-        async let mention: MeteoAttribution? = MeteoService.attribution()
         do {
             groupes = try await auth.withSession { try await auth.client.fetchGroupes(manifestationID: manifestation.id) }
         } catch {
             errorMessage = error.localizedDescription
         }
-        if let url = manifestation.gpxURL, let data = try? await auth.client.download(url) {
-            trace = GPXTrack.parse(data)
-            let fichier = FileManager.default.temporaryDirectory.appendingPathComponent("\(manifestation.libelle.capitalized).gpx")
-            if (try? data.write(to: fichier)) != nil { fichierGPX = fichier }
-        }
-        meteo = await prevision
-        if meteo != nil { mentionMeteo = await mention }
     }
 
-    private func chargerMeteo() async -> Meteo? {
-        guard let debut = manifestation.debutDate, let c = manifestation.adresse?.coordinate else { return nil }
-        return await MeteoService.prevision(latitude: c.latitude, longitude: c.longitude, jour: debut)
+    /// Tracé GPX : téléchargé en parallèle à l'ouverture ; la carte et le profil se mettent à jour à l'arrivée.
+    private func chargerTrace() async {
+        guard !traceCharge else { return }
+        traceCharge = true
+        guard let url = manifestation.gpxURL, let data = try? await auth.client.download(url) else { return }
+        trace = GPXTrack.parse(data)
+        let fichier = FileManager.default.temporaryDirectory.appendingPathComponent("\(manifestation.libelle.capitalized).gpx")
+        if (try? data.write(to: fichier)) != nil { fichierGPX = fichier }
+    }
+
+    /// Météo : demandée en parallèle à l'ouverture ; la carte se met à jour à l'arrivée.
+    private func chargerMeteo() async {
+        guard !meteoCharge else { return }
+        meteoCharge = true
+        guard let debut = manifestation.debutDate else { erreurMeteo = MeteoDiagnostic.dateIllisible(manifestation.dateDebut).localizedDescription; return }
+        guard let c = manifestation.adresse?.coordinate else { erreurMeteo = MeteoDiagnostic.pasDeCoordonnees.localizedDescription; return }
+        do {
+            meteo = try await MeteoService.prevision(latitude: c.latitude, longitude: c.longitude, jour: debut)
+            if meteo != nil { mentionMeteo = await MeteoService.attribution() }
+        } catch {
+            erreurMeteo = "\(error.localizedDescription)\n\(String(describing: error))"
+        }
     }
 
     // MARK: météo
+
+    private var meteoDisponible: Bool {
+        guard let debut = manifestation.debutDate, manifestation.adresse?.coordinate != nil else { return false }
+        return MeteoService.dansHorizon(debut)
+    }
+
+    @ViewBuilder
+    private var meteoSection: some View {
+        Group {
+            if let meteo {
+                meteoCarte(meteo)
+            } else if let erreurMeteo {
+                VStack(alignment: .leading, spacing: 6) {
+                    Eyebrow("MÉTÉO")
+                    Text("Météo indisponible").font(.barlow(15, .semibold)).foregroundStyle(Theme.textSoft)
+                    Text(erreurMeteo).font(.barlow(12)).foregroundStyle(Theme.muted).textSelection(.enabled)
+                }
+                .card(radius: 24, padding: 16)
+            } else {
+                ProgressView().frame(maxWidth: .infinity, minHeight: 150)
+            }
+        }
+    }
 
     private func meteoCarte(_ m: Meteo) -> some View {
         func degres(_ t: Double) -> String { "\(Int(t.rounded()))°" }
@@ -495,5 +534,15 @@ private extension MKMapRect {
             rect = rect.union(MKMapRect(x: p.x, y: p.y, width: 0, height: 0))
         }
         self = rect
+    }
+}
+
+private enum MeteoDiagnostic: LocalizedError {
+    case dateIllisible(String), pasDeCoordonnees
+    var errorDescription: String? {
+        switch self {
+        case .dateIllisible(let d): "Date de début illisible : « \(d) »."
+        case .pasDeCoordonnees: "Pas de coordonnées exploitables pour ce lieu."
+        }
     }
 }
