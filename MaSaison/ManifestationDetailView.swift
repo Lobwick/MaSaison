@@ -84,7 +84,10 @@ struct ManifestationDetailView: View {
         .task { await chargerMeteo() }
         .task { correspondant = try? await auth.withSession { try await auth.client.fetchCorrespondant(manifestationID: manifestation.id) } }
         .task { await chargerPhotoProfil() }
-        .task { await suivi.actualiser(auth) }
+        .task {
+            suivi.memoriser([manifestation])
+            await suivi.actualiser(auth)
+        }
         // déjà autorisé : le trajet se calcule sans rien demander ; sinon un bouton propose de le faire
         .task { if TrajetService.autorise { await calculerTrajet() } }
         .quickLookPreview($apercu)
@@ -360,7 +363,7 @@ struct ManifestationDetailView: View {
                 Text(manifestation.libelle).font(.cond(34)).textCase(.uppercase).foregroundStyle(Theme.text)
                     .lineSpacing(-2).fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
-                BoutonEnvie(manifestationID: manifestation.id, taille: 22)
+                BoutonEnvie(manifestation: manifestation, taille: 22)
             }
             if let debut = manifestation.debutDate {
                 Text(dateTexte(debut)).font(.barlow(14, .semibold)).tracking(0.6).foregroundStyle(Theme.muted)
@@ -399,7 +402,7 @@ struct ManifestationDetailView: View {
         if let start = Self.parse(manifestation.datesInscriptionStart, manifestation.horaireInscriptionStart), now < start {
             return .aVenir("Inscriptions ouvrent le \(debut)")
         }
-        if let end = Self.parse(manifestation.datesInscriptionEnd, manifestation.horaireInscriptionEnd), now > end {
+        if let end = manifestation.clotureInscriptions, now > end {
             return .ferme("Inscriptions fermées depuis le \(fin)")
         }
         guard manifestation.inscriptible == true else { return .ferme("Inscriptions fermées") }
@@ -420,12 +423,7 @@ struct ManifestationDetailView: View {
     }
 
     private static func parse(_ date: String?, _ heure: String?) -> Date? {
-        guard let date else { return nil }
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.timeZone = TimeZone(identifier: "Europe/Paris")
-        f.dateFormat = "dd/MM/yyyy HH:mm"
-        return f.date(from: "\(date) \(heureCourte(heure) ?? "00:00")")
+        Manifestation.dateInscription(date, heure)
     }
 
     enum Statut {

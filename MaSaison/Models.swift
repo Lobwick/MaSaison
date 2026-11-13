@@ -99,6 +99,26 @@ struct Manifestation: Decodable, Identifiable {
 
     var debutDate: Date? { Date.fr("dd/MM/yyyy").date(from: dateDebut) }
 
+    /// Ouverture des inscriptions (heure de Paris) ; début de journée si l'heure manque.
+    var ouvertureInscriptions: Date? { Self.dateInscription(datesInscriptionStart, horaireInscriptionStart) }
+
+    /// Clôture des inscriptions (heure de Paris) ; fin de journée (23:59) si l'heure manque.
+    var clotureInscriptions: Date? {
+        let heure = horaireInscriptionEnd.flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 } ?? "23:59"
+        return Self.dateInscription(datesInscriptionEnd, heure)
+    }
+
+    /// « 18/11/2026 » + « 23:59 » ou « 23:59:00 » → date, à l'heure de Paris.
+    static func dateInscription(_ date: String?, _ heure: String?) -> Date? {
+        guard let date else { return nil }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "Europe/Paris")
+        f.dateFormat = "dd/MM/yyyy HH:mm"
+        let h = heure?.trimmingCharacters(in: .whitespaces).prefix(5)
+        return f.date(from: "\(date) \(h.map(String.init) ?? "00:00")")
+    }
+
     /// Type de la manifestation (« Cyclocross Classique »).
     struct Modele: Decodable {
         let libelle: String

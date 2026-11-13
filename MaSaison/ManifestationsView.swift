@@ -1236,7 +1236,7 @@ struct ManifestationsView: View {
         // signet hors du NavigationLink pour que le toucher n'ouvre pas le détail ; place réservée dans la ligne
         .overlay(alignment: .trailing) {
             if suivi.etat(m.id).envieModifiable {
-                BoutonEnvie(manifestationID: m.id).padding(.trailing, 40)
+                BoutonEnvie(manifestation: m).padding(.trailing, 40)
             }
         }
     }
@@ -1265,6 +1265,7 @@ struct ManifestationsView: View {
             await chargerInscriptions()
             let nouvelles = try await pageSuivante()
             manifestations = nouvelles
+            suivi.memoriser(nouvelles)
             // filtre par département très sélectif : on continue jusqu'à avoir quelque chose à afficher
             if manifestations.isEmpty { await chargerSuite() }
         } catch is CancellationError {
@@ -1325,6 +1326,7 @@ struct ManifestationsView: View {
         var parID = Dictionary(manifestations.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         for m in nouvelles { parID[m.id] = m }
         manifestations = parID.values.sorted { ($0.debutDate ?? .distantFuture, $0.id) < ($1.debutDate ?? .distantFuture, $1.id) }
+        suivi.memoriser(manifestations)
     }
 
     private static let formatMois: DateFormatter = {

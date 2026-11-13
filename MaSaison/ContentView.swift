@@ -23,6 +23,8 @@ struct ContentView: View {
         .environment(agenda)
         .environment(suivi)
         .task { await auth.restoreSession() }
+        // au lancement et à la connexion : états à jour et rappels de clôture reprogrammés
+        .task(id: auth.isLoggedIn) { if auth.isLoggedIn { await suivi.actualiser(auth) } }
     }
 }
 
