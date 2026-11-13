@@ -29,39 +29,85 @@ struct MainTabView: View {
     @Environment(FiltresStore.self) private var filtres
     @Environment(CartesStore.self) private var cartes
     @AppStorage("ongletSelectionne") private var onglet = 0
+    @AppStorage("hideFloatingTabBar") private var hideFloatingTabBar = false
 
     var body: some View {
-        TabView(selection: $onglet) {
-            Tab("Accueil", systemImage: "house", value: 0) {
+        ZStack {
+            switch onglet {
+            case 0:
                 NavigationStack { MesInscriptionsView() }
-            }
-            Tab("Courses", systemImage: "flag.checkered", value: 1) {
+            case 1:
                 NavigationStack {
                     ManifestationsView(vueInitiale: .liste, afficherSelecteurVue: false, afficherRecherche: true)
                 }
-            }
-            Tab("Carte", systemImage: "map", value: 2) {
+            case 2:
                 NavigationStack {
                     ManifestationsView(vueInitiale: .carte, afficherSelecteurVue: false, afficherRecherche: false)
                 }
-            }
-            Tab("Calendrier", systemImage: "calendar", value: 3) {
+            case 3:
                 NavigationStack {
                     ManifestationsView(vueInitiale: .calendrier, afficherSelecteurVue: false, afficherRecherche: false)
                 }
-            }
-            Tab("Profil", systemImage: "person.crop.circle", value: 4) {
+            default:
                 NavigationStack { ProfilView() }
             }
         }
-        .tint(Theme.accent)
-        .toolbarBackground(.ultraThinMaterial, for: .tabBar)
-        .toolbarBackground(.visible, for: .tabBar)
+        .safeAreaInset(edge: .bottom) {
+            if !hideFloatingTabBar {
+                FloatingTabBar(selection: $onglet)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .padding(.bottom, 8)
+            }
+        }
         .task {
             await filtres.loadIfNeeded(auth: auth)
             await cartes.load(auth: auth)
             filtres.appliquerOrigine(cartes: cartes.cartes)
         }
+    }
+}
+
+private struct FloatingTabBar: View {
+    @Binding var selection: Int
+
+    private let items: [(index: Int, title: String, icon: String, selectedIcon: String)] = [
+        (0, "Accueil", "house", "house.fill"),
+        (1, "Courses", "bicycle", "bicycle"),
+        (2, "Carte", "map", "map.fill"),
+        (3, "Calendrier", "calendar", "calendar"),
+        (4, "Profil", "person", "person.fill")
+    ]
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(items, id: \.index) { item in
+                let actif = selection == item.index
+                Button {
+                    selection = item.index
+                } label: {
+                    VStack(spacing: 3) {
+                        Image(systemName: actif ? item.selectedIcon : item.icon)
+                            .font(.system(size: 20, weight: actif ? .semibold : .medium))
+                        Text(item.title)
+                            .font(.barlow(11, actif ? .semibold : .medium))
+                        Circle()
+                            .fill(actif ? Theme.accent : .clear)
+                            .frame(width: 4, height: 4)
+                    }
+                    .foregroundStyle(actif ? Theme.accent : Theme.muted)
+                    .frame(maxWidth: .infinity, minHeight: 56)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(item.title)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Theme.surface, in: Capsule())
+        .overlay(Capsule().stroke(Theme.line, lineWidth: 1))
+        .shadow(color: Color.black.opacity(0.06), radius: 10, x: 0, y: 4)
     }
 }
 

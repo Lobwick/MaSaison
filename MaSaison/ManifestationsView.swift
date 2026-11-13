@@ -19,6 +19,7 @@ struct ManifestationsView: View {
     @Environment(AuthModel.self) private var auth
     @Environment(FiltresStore.self) private var store
     @Environment(CartesStore.self) private var cartes
+    @AppStorage("hideFloatingTabBar") private var hideFloatingTabBar = false
     private let afficherSelecteurVue: Bool
     private let afficherRecherche: Bool
     @State private var vueSelectionnee: Vue = .liste
@@ -26,6 +27,7 @@ struct ManifestationsView: View {
     @State private var sportCodes: Set<String> = []
     @State private var filtresInitialises = false
     @State private var recherche = ""
+    @FocusState private var rechercheFocus: Bool
     @State private var manifestations: [Manifestation] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -50,11 +52,18 @@ struct ManifestationsView: View {
     @State private var positionsSemaines: [PositionSemaine] = []
     @State private var hauteurViewportCalendrier: CGFloat = 0
     @State private var prechargementCalendrierEnCours = false
+    @State private var filtreStatut: FiltreStatut = .tous
 
     private struct Requete: Equatable {
         var departementIDs: Set<Int>
         var sportCodes: Set<String>
         var recherche: String
+    }
+
+    private enum FiltreStatut: String, CaseIterable, Identifiable {
+        case tous
+        case inscrit
+        var id: String { rawValue }
     }
 
     private var estCartePleinEcran: Bool { !afficherSelecteurVue && vueSelectionnee == .carte }
@@ -84,26 +93,28 @@ struct ManifestationsView: View {
             } else {
                 ScrollView(.vertical) {
                     LazyVStack(alignment: .leading, spacing: 16) {
-                        Text(titrePage).pageTitle()
+                        if vueSelectionnee == .liste && !afficherSelecteurVue {
+                            enteteCoursesRecherche
+                        } else {
+                            Text(titrePage).pageTitle()
 
-                        HStack(spacing: 10) {
-                            if afficherRecherche {
-                                HStack(spacing: 10) {
-                                    Image(systemName: "magnifyingglass").foregroundStyle(Theme.muted)
-                                    TextField("", text: $recherche, prompt: Text("Nom de la manifestation").foregroundStyle(Theme.muted))
-                                        .font(.barlow(15)).foregroundStyle(Theme.text)
-                                        .autocorrectionDisabled()
+                            HStack(spacing: 10) {
+                                if afficherRecherche {
+                                    HStack(spacing: 10) {
+                                        Image(systemName: "magnifyingglass").foregroundStyle(Theme.muted)
+                                        TextField("", text: $recherche, prompt: Text("Nom de la manifestation").foregroundStyle(Theme.muted))
+                                            .font(.barlow(15)).foregroundStyle(Theme.text)
+                                            .autocorrectionDisabled()
+                                    }
+                                    .padding(.horizontal, 14).frame(height: 48)
+                                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                    .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.line, lineWidth: 1))
+                                } else {
+                                    Spacer(minLength: 0)
                                 }
-                                .padding(.horizontal, 14).frame(height: 48)
-                                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.line, lineWidth: 1))
-                            } else {
-                                Spacer(minLength: 0)
+                                boutonFiltres
                             }
-                            boutonFiltres
                         }
-
-                        AstuceView(tip: AppTips.manifestations)
 
                         if nombreFiltres > 0 && vueSelectionnee != .carte && vueSelectionnee != .calendrier {
                             FlowPills {
@@ -130,7 +141,7 @@ struct ManifestationsView: View {
                                 .onAppear { Task { await chargerSuite() } }
                         }
                     }
-                    .padding(.horizontal, 20).padding(.top, 24).padding(.bottom, 24)
+                    .padding(.horizontal, 20).padding(.top, 24).padding(.bottom, 120)
                     .containerRelativeFrame(.horizontal)
                 }
             }
@@ -158,6 +169,15 @@ struct ManifestationsView: View {
         .onChange(of: vueSelectionnee) { _, nouvelleVue in
             majVueSelectionnee(nouvelleVue)
         }
+        .onChange(of: panneauOuvert) { _, _ in
+            majVisibiliteTabBar()
+        }
+        .onChange(of: pointCarteSelectionneID) { _, _ in
+            majVisibiliteTabBar()
+        }
+        .onChange(of: jourPopupCalendrier) { _, _ in
+            majVisibiliteTabBar()
+        }
         .task(id: vueSelectionnee) {
             if vueSelectionnee == .calendrier {
                 await prechargerCalendrierSiNecessaire(jusqua: moisCourant)
@@ -180,6 +200,8 @@ struct ManifestationsView: View {
             guard !Task.isCancelled else { return }
             await load()
         }
+        .onAppear { majVisibiliteTabBar() }
+        .onDisappear { hideFloatingTabBar = false }
     }
 
     private var boutonFiltres: some View {
@@ -238,9 +260,76 @@ struct ManifestationsView: View {
         return morceaux.joined(separator: " · ")
     }
 
+    private var enteteCoursesRecherche: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Image(systemName: "person.crop.circle.fill")
+                    .font(.system(size: 34))
+                    .foregroundStyle(Theme.accent.opacity(0.9))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Courses").pageTitle()
+                    HStack(spacing: 6) {
+                        Circle().fill(Theme.accent).frame(width: 6, height: 6)
+                        Text("Saison UFOLEP \(saisonCourses)")
+                            .font(.barlow(12, .semibold))
+                            .foregroundStyle(Theme.accent)
+                    }
+                }
+                Spacer()
+                Image(systemName: "bell")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(Theme.textSoft)
+                    .frame(width: 40, height: 40)
+                    .background(Theme.surface2, in: Circle())
+                    .overlay(Circle().stroke(Theme.line, lineWidth: 1))
+            }
+
+            HStack(spacing: 10) {
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(Theme.muted)
+                    TextField("", text: $recherche, prompt: Text("Nom de la manifestation").foregroundStyle(Theme.muted))
+                        .focused($rechercheFocus)
+                        .font(.barlow(15))
+                        .foregroundStyle(Theme.text)
+                        .autocorrectionDisabled()
+                    if !recherche.isEmpty {
+                        Button {
+                            recherche = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 16))
+                                .foregroundStyle(Theme.faint)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .frame(height: 48)
+                .background(Theme.surface2, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(rechercheFocus ? Theme.accent : Theme.line, lineWidth: rechercheFocus ? 2 : 1)
+                )
+                boutonFiltres
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    chipStatut(.tous, texte: "Tous", icone: nil, couleur: Theme.text, fond: Theme.text, texteCouleur: Theme.bg)
+                    chipStatut(.inscrit, texte: "Inscrit (\(inscritIDs.count))", icone: "checkmark.circle.fill", couleur: Theme.accent, fond: Theme.accent.opacity(0.12), texteCouleur: Theme.accent)
+                }
+                .padding(.horizontal, 1)
+            }
+        }
+    }
+
     private var vueListe: some View {
-        let pourMoi = manifestations.filter(cartes.correspond)
-        let autres = manifestations.filter { !cartes.correspond($0) }
+        let source = switch filtreStatut {
+        case .tous: manifestations
+        case .inscrit: manifestations.filter { inscritIDs.contains($0.id) }
+        }
+        let pourMoi = source.filter(cartes.correspond)
+        let autres = source.filter { !cartes.correspond($0) }
         return Group {
             if !pourMoi.isEmpty {
                 HStack(alignment: .firstTextBaseline) {
@@ -251,9 +340,15 @@ struct ManifestationsView: View {
                 ForEach(pourMoi) { ligne($0) }
             }
             if !autres.isEmpty {
-                Eyebrow(pourMoi.isEmpty ? "\(manifestations.count) manifestation(s)" : "Autres (\(autres.count))")
+                Eyebrow(pourMoi.isEmpty ? "\(source.count) manifestation(s)" : "Autres (\(autres.count))")
                     .padding(.top, 4)
                 ForEach(autres) { ligne($0) }
+            }
+            if source.isEmpty {
+                Text(filtreStatut == .inscrit ? "Aucune course inscrite avec les filtres actifs." : "Aucune course trouvée avec les filtres actifs.")
+                    .font(.barlow(14))
+                    .foregroundStyle(Theme.muted)
+                    .card(padding: 14)
             }
         }
     }
@@ -292,11 +387,33 @@ struct ManifestationsView: View {
                     HStack {
                         Text(titrePage).pageTitle()
                         Spacer()
-                        boutonFiltres
+                        boutonFiltresCarte
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 16)
 
+                    HStack {
+                        Spacer()
+                        VStack(spacing: 8) {
+                            boutonControleCarte(systemImage: "location.fill", label: "Me recentrer") {
+                                guard let position = localisation.position else { return }
+                                withAnimation(.easeInOut(duration: 0.25)) {
+                                    positionCarte = .region(MKCoordinateRegion(center: position.coordinate, latitudinalMeters: 24_000, longitudinalMeters: 24_000))
+                                }
+                            }
+                            boutonControleCarte(systemImage: "safari", label: "Nord") {
+                                guard let position = localisation.position else { return }
+                                withAnimation(.easeInOut(duration: 0.25)) {
+                                    positionCarte = .region(MKCoordinateRegion(center: position.coordinate, latitudinalMeters: 70_000, longitudinalMeters: 70_000))
+                                }
+                            }
+                            boutonControleCarte(systemImage: "square.stack.3d.up", label: "Style de carte") {
+                                // Placeholder visuel aligné avec Stitch ; style déjà géré par MapKit.
+                            }
+                        }
+                    }
+                    .padding(.trailing, 16)
+                    .padding(.top, 130)
                 }
                 .safeAreaInset(edge: .bottom) {
                     if let pointSelectionne {
@@ -304,6 +421,13 @@ struct ManifestationsView: View {
                             .padding(.horizontal, 10)
                             .padding(.top, 8)
                     }
+                }
+                .overlay(alignment: .bottomLeading) {
+                    Text("Plans · Données UFOLEP")
+                        .font(.barlow(10))
+                        .foregroundStyle(Theme.muted.opacity(0.8))
+                        .padding(.leading, 12)
+                        .padding(.bottom, 8)
                 }
                 .onAppear {
                     localisation.demarrer()
@@ -356,9 +480,29 @@ struct ManifestationsView: View {
                     pointCarteSelectionneID = point.id
                 } label: {
                     if point.manifestations.count == 1 {
-                        Image(systemName: "mappin.circle.fill")
-                            .font(.system(size: 30))
-                            .foregroundStyle(Theme.accent)
+                        VStack(spacing: 4) {
+                            if let date = point.manifestations.first?.debutDate {
+                                HStack(spacing: 4) {
+                                    Circle().fill(Theme.accent).frame(width: 5, height: 5)
+                                    Text(Date.fr("d MMM").string(from: date).capitalized)
+                                        .font(.barlow(10, .semibold))
+                                        .foregroundStyle(Theme.text)
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Theme.surface, in: Capsule())
+                            }
+                            ZStack {
+                                Circle()
+                                    .fill(Theme.accent)
+                                    .frame(width: pointCarteSelectionneID == point.id ? 46 : 36, height: pointCarteSelectionneID == point.id ? 46 : 36)
+                                Image(systemName: "bicycle")
+                                    .font(.system(size: pointCarteSelectionneID == point.id ? 18 : 15, weight: .bold))
+                                    .foregroundStyle(Theme.bg)
+                            }
+                            .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                            .shadow(color: Theme.accent.opacity(0.35), radius: 10, x: 0, y: 4)
+                        }
                     } else {
                         ZStack {
                             Circle().fill(Theme.accent).frame(width: 34, height: 34)
@@ -372,6 +516,42 @@ struct ManifestationsView: View {
             }
         }
         if localisation.position != nil { UserAnnotation() }
+    }
+
+    private var boutonFiltresCarte: some View {
+        Button { panneauOuvert = true } label: {
+            Image(systemName: "slider.horizontal.3")
+                .font(.system(size: 19, weight: .semibold))
+                .foregroundStyle(Theme.text)
+                .frame(width: 40, height: 40)
+                .background(Theme.surface, in: Circle())
+                .overlay(Circle().stroke(Theme.line, lineWidth: 1))
+                .overlay(alignment: .topTrailing) {
+                    if nombreFiltres > 0 {
+                        Text("\(nombreFiltres)")
+                            .font(.barlow(10, .semibold))
+                            .foregroundStyle(Theme.bg)
+                            .frame(minWidth: 16, minHeight: 16)
+                            .background(Theme.accent, in: Capsule())
+                            .offset(x: 4, y: -4)
+                    }
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Filtres, \(nombreFiltres) actif(s)")
+    }
+
+    private func boutonControleCarte(systemImage: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Theme.textSoft)
+                .frame(width: 40, height: 40)
+                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Theme.line, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
     }
 
     private func popupCarte(_ point: PointCarte) -> some View {
@@ -933,6 +1113,12 @@ struct ManifestationsView: View {
         sportCodes = nouveaux
     }
 
+    private func majVisibiliteTabBar() {
+        let popupCarteOuverte = pointCarteSelectionneID != nil && estCartePleinEcran
+        let popupCalendrierOuverte = jourPopupCalendrier != nil && estCalendrierPleinEcran
+        hideFloatingTabBar = panneauOuvert || popupCarteOuverte || popupCalendrierOuverte
+    }
+
     private func majVueSelectionnee(_ nouvelleVue: Vue) {
         if nouvelleVue == .carte {
             localisation.demarrer()
@@ -995,13 +1181,44 @@ struct ManifestationsView: View {
         }
     }
 
+    private func chipStatut(_ statut: FiltreStatut, texte: String, icone: String?, couleur: Color, fond: Color, texteCouleur: Color) -> some View {
+        Button {
+            filtreStatut = statut
+        } label: {
+            HStack(spacing: 5) {
+                if let icone {
+                    Image(systemName: icone).font(.system(size: 12, weight: .semibold))
+                }
+                Text(texte).font(.barlow(12, .semibold))
+            }
+            .foregroundStyle(filtreStatut == statut ? texteCouleur : couleur)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(
+                Capsule()
+                    .fill(filtreStatut == statut ? fond : fond.opacity(0.75))
+            )
+            .overlay(
+                Capsule()
+                    .stroke(filtreStatut == statut ? fond.opacity(0.45) : Theme.line, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var saisonCourses: String {
+        let annee = Calendar.current.component(.year, from: Date())
+        return "\(annee)-\(annee + 1)"
+    }
+
     private func ligne(_ m: Manifestation) -> some View {
         NavigationLink {
             ManifestationDetailView(manifestation: m)
         } label: {
-            RowCard(date: m.debutDate, title: m.libelle,
-                    subtitle: [m.adresse?.commune?.capitalized, m.modele?.libelle].compactMap { $0 }.joined(separator: " · "),
-                    inscrit: inscritIDs.contains(m.id))
+            CourseListRow(
+                manifestation: m,
+                inscrit: inscritIDs.contains(m.id)
+            )
         }
         .buttonStyle(.plain)
     }
@@ -1151,6 +1368,76 @@ struct ManifestationsView: View {
         let weekday = cal.component(.weekday, from: date)
         let ecart = (weekday + 5) % 7 // lundi = 0
         return cal.startOfDay(for: cal.date(byAdding: .day, value: -ecart, to: date) ?? date)
+    }
+}
+
+private struct CourseListRow: View {
+    let manifestation: Manifestation
+    let inscrit: Bool
+
+    private static let heureFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "fr_FR")
+        f.dateFormat = "HH:mm"
+        return f
+    }()
+
+    private var heure: String? {
+        guard let brut = manifestation.dateDebutHoraire?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !brut.isEmpty else { return nil }
+        if brut.contains(":") { return brut }
+        if let d = Date.fr("HH:mm:ss").date(from: brut) { return Self.heureFormatter.string(from: d) }
+        if let d = Date.fr("HH:mm").date(from: brut) { return Self.heureFormatter.string(from: d) }
+        return nil
+    }
+
+    var body: some View {
+        HStack(spacing: 14) {
+            VStack(spacing: 4) {
+                Text(manifestation.debutDate.map { Date.fr("dd").string(from: $0) } ?? "—")
+                    .font(.cond(22, .semibold))
+                    .foregroundStyle(inscrit ? Theme.accent : Theme.text)
+                Text(manifestation.debutDate.map { Date.fr("MMM").string(from: $0).uppercased() } ?? "")
+                    .font(.cond(11, .semibold))
+                    .tracking(1.2)
+                    .foregroundStyle(Theme.muted)
+                if let heure {
+                    Text(heure)
+                        .font(.barlow(11, .semibold))
+                        .foregroundStyle(inscrit ? Theme.bg : Theme.accent)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2)
+                        .background(inscrit ? Theme.accent : Theme.accent.opacity(0.13), in: Capsule())
+                }
+            }
+            .frame(width: 62)
+            .frame(minHeight: 74)
+            .background(inscrit ? Theme.accent.opacity(0.1) : Theme.surface2, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(manifestation.libelle)
+                    .font(.barlow(17, .semibold))
+                    .foregroundStyle(Theme.text)
+                    .lineLimit(1)
+                Text([manifestation.adresse?.commune?.capitalized, manifestation.modele?.libelle].compactMap { $0 }.joined(separator: " · "))
+                    .font(.barlow(13))
+                    .foregroundStyle(Theme.muted)
+                    .lineLimit(1)
+                if inscrit {
+                    Label("Inscrit", systemImage: "checkmark.seal.fill")
+                        .font(.barlow(12, .semibold))
+                        .foregroundStyle(Theme.accent)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Theme.accent.opacity(0.12), in: Capsule())
+                }
+            }
+            Spacer()
+            Image(systemName: inscrit ? "checkmark.circle.fill" : "chevron.right")
+                .font(.system(size: inscrit ? 22 : 14, weight: .semibold))
+                .foregroundStyle(inscrit ? Theme.accent : Theme.faint)
+        }
+        .card(border: inscrit ? Theme.accent.opacity(0.35) : Theme.line, radius: 24, padding: 12)
     }
 }
 

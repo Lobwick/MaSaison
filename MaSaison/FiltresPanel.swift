@@ -17,8 +17,6 @@ struct FiltresPanel: View {
                     IconButton(systemImage: "xmark", label: "Fermer") { dismiss() }
                 }
 
-                AstuceView(tip: AppTips.filtres)
-
                 VStack(spacing: 10) {
                     ligne(titre: "Sport", valeur: store.resumeSports(sports), actif: !sports.isEmpty,
                           modifier: MultiSelectView.sports(store.sports, selection: $sports),
@@ -67,7 +65,7 @@ struct FiltresPanel: View {
                 .opacity(actif ? 1 : 0.35).disabled(!actif)
         }
         .padding(.vertical, 14).padding(.leading, 18).padding(.trailing, 14)
-        .background(Color(hex: 0x0F1318), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(actif ? Theme.accent : Theme.line, lineWidth: 1))
+        .background(Theme.surface2, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(actif ? Theme.accent.opacity(0.5) : Theme.line, lineWidth: 1))
     }
 }

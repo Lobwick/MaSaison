@@ -2,15 +2,16 @@ import SwiftUI
 
 /// Direction visuelle claire inspirée des apps Apple : fond blanc, cartes en matériau, accent système.
 enum Theme {
-    static let bg = Color(hex: 0xF6F7FB)
-    static let surface = Color.white.opacity(0.72)
-    static let surface2 = Color.white.opacity(0.88)
-    static let line = Color.black.opacity(0.09)
+    static let bg = Color(hex: 0xFCF8FB)
+    static let surface = Color.white
+    static let surface2 = Color(hex: 0xF6F3F5)
+    static let line = Color.black.opacity(0.06)
     static let text = Color(hex: 0x111318)
     static let textSoft = Color(hex: 0x2B2F36)
     static let muted = Color(hex: 0x6B7380)
     static let faint = Color(hex: 0x98A0AD)
-    static let accent = Color.blue
+    static let accent = Color(hex: 0x006948)
+    static let secondary = Color(hex: 0x0058BC)
     static let danger = Color.red
     static let warning = Color.orange
 
@@ -29,8 +30,18 @@ extension Color {
 extension Font {
     enum Poids { case medium, semibold, bold }
 
-    /// Titres/chiffres style Apple (SF Pro, design rounded).
-    static func cond(_ size: CGFloat, _ poids: Poids = .bold) -> Font {
+    /// SF Pro (texte standard iOS).
+    static func sfPro(_ size: CGFloat, _ poids: Poids = .medium) -> Font {
+        let weight: Font.Weight = switch poids {
+        case .medium: .regular
+        case .semibold: .semibold
+        case .bold: .bold
+        }
+        return .system(size: size, weight: weight, design: .default)
+    }
+
+    /// SF Compact-like (équivalent visuel via design rounded).
+    static func sfCompact(_ size: CGFloat, _ poids: Poids = .bold) -> Font {
         let weight: Font.Weight = switch poids {
         case .medium: .medium
         case .semibold: .semibold
@@ -39,14 +50,23 @@ extension Font {
         return .system(size: size, weight: weight, design: .rounded)
     }
 
-    /// Texte courant style Apple (SF Pro).
-    static func barlow(_ size: CGFloat, _ poids: Poids = .medium) -> Font {
+    /// SF Mono pour les valeurs/horaires.
+    static func sfMono(_ size: CGFloat, _ poids: Poids = .medium) -> Font {
         let weight: Font.Weight = switch poids {
         case .medium: .regular
         case .semibold: .semibold
         case .bold: .bold
         }
-        return .system(size: size, weight: weight, design: .default)
+        return .system(size: size, weight: weight, design: .monospaced)
+    }
+
+    // Compatibilité existante
+    static func cond(_ size: CGFloat, _ poids: Poids = .bold) -> Font {
+        sfCompact(size, poids)
+    }
+
+    static func barlow(_ size: CGFloat, _ poids: Poids = .medium) -> Font {
+        sfPro(size, poids)
     }
 }
 
@@ -103,7 +123,7 @@ extension View {
     func card(border: Color = Theme.line, radius: CGFloat = 20, padding: CGFloat = 16) -> some View {
         self.padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous).stroke(border, lineWidth: 1))
     }
 
@@ -150,7 +170,7 @@ struct IconButton: View {
     let action: () -> Void
 
     var body: some View {
-        let fond = danger ? AnyShapeStyle(Color.clear) : AnyShapeStyle(.ultraThinMaterial)
+        let fond = danger ? AnyShapeStyle(Color.clear) : AnyShapeStyle(Theme.surface)
         Button(action: action) {
             Image(systemName: systemImage).font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(danger ? Theme.danger : Theme.text)

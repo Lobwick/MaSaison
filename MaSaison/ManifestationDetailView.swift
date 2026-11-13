@@ -10,6 +10,7 @@ struct ManifestationDetailView: View {
     @Environment(AgendaStore.self) private var agenda
     @AppStorage("boutonAgenda") private var boutonAgenda = true
     @AppStorage("echauffementMinutes") private var echauffement = 60
+    @Environment(\.dismiss) private var dismiss
 
     let manifestation: Manifestation
     @State private var groupes: [GroupeNiveaux] = []
@@ -37,9 +38,8 @@ struct ManifestationDetailView: View {
     var body: some View {
         ScrollView(.vertical) {
             LazyVStack(alignment: .leading, spacing: 22) {
+                barreNavigationDetail
                 entete
-
-                if !miennes.isEmpty { AstuceView(tip: AppTips.detail) }
 
                 if miennes.isEmpty {
                     if !autres.isEmpty {
@@ -67,11 +67,12 @@ struct ManifestationDetailView: View {
 
                 if let errorMessage { Text(errorMessage).font(.barlow(14)).foregroundStyle(Theme.danger) }
             }
-            .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 40)
+            .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 120)
             .containerRelativeFrame(.horizontal)
         }
         .screenBackground()
-        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar(.hidden, for: .navigationBar)
+        .navigationBarBackButtonHidden(true)
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
@@ -283,26 +284,59 @@ struct ManifestationDetailView: View {
                 }
             }
         }
-        .card(radius: 24, padding: 16)
+        .padding(16)
+        .background(Theme.surface2, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(Theme.line, lineWidth: 1))
         .accessibilityElement(children: .combine)
     }
 
     // MARK: en-tête
 
+    private var barreNavigationDetail: some View {
+        HStack {
+            Button {
+                dismiss()
+            } label: {
+                Label("Courses", systemImage: "chevron.left")
+                    .font(.barlow(16, .semibold))
+                    .foregroundStyle(Theme.accent)
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
+
+            HStack(spacing: 10) {
+                ShareLink(item: manifestation.libelle) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Theme.textSoft)
+                        .frame(width: 36, height: 36)
+                        .background(Theme.surface2, in: Circle())
+                        .overlay(Circle().stroke(Theme.line, lineWidth: 1))
+                }
+                Image(systemName: "bell")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Theme.textSoft)
+                    .frame(width: 36, height: 36)
+                    .background(Theme.surface2, in: Circle())
+                    .overlay(Circle().stroke(Theme.line, lineWidth: 1))
+            }
+        }
+    }
+
     private var entete: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Eyebrow([manifestation.modele?.libelle, manifestation.structure?.nom].compactMap { $0 }.joined(separator: " · "))
-            Text(manifestation.libelle).font(.cond(52)).textCase(.uppercase).foregroundStyle(Theme.text)
-                .lineSpacing(-6).fixedSize(horizontal: false, vertical: true)
+            Text(manifestation.libelle).font(.cond(34)).textCase(.uppercase).foregroundStyle(Theme.text)
+                .lineSpacing(-2).fixedSize(horizontal: false, vertical: true)
             if let debut = manifestation.debutDate {
-                Text(dateTexte(debut)).font(.cond(20, .semibold)).tracking(1).foregroundStyle(Theme.textSoft)
+                Text(dateTexte(debut)).font(.barlow(14, .semibold)).tracking(0.6).foregroundStyle(Theme.muted)
             }
-            StatutBadge(statut: statut)
+            statutBandeau
         }
     }
 
     private func dateTexte(_ debut: Date) -> String {
-        let f = Date.fr("EEE d MMMM yyyy")
+        let f = Date.fr("EEEE d MMMM yyyy")
         var s = f.string(from: debut).uppercased().replacingOccurrences(of: ".", with: ".")
         if let fin = Date.fr("dd/MM/yyyy").date(from: manifestation.dateFin), fin > debut {
             s += " → " + Date.fr("EEE d MMMM").string(from: fin).uppercased()
@@ -339,6 +373,23 @@ struct ManifestationDetailView: View {
         case ouvert(String), ferme(String), aVenir(String)
     }
 
+    @ViewBuilder
+    private var statutBandeau: some View {
+        switch statut {
+        case .ferme(let texte):
+            Label(texte, systemImage: "lock.fill")
+                .font(.barlow(13, .semibold))
+                .foregroundStyle(Theme.danger)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Theme.danger.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.danger.opacity(0.2), lineWidth: 1))
+        default:
+            StatutBadge(statut: statut)
+        }
+    }
+
     // MARK: ma course
 
     private func carteCourse(_ course: ConfigNiveau, groupe: String) -> some View {
@@ -353,31 +404,25 @@ struct ManifestationDetailView: View {
             if infos.isEmpty {
                 Text("Horaires non communiqués").font(.barlow(14)).foregroundStyle(Theme.muted)
             } else {
-                HStack(spacing: 10) {
-                    tuile("APPEL", infos.heure ?? "—")
-                    tuile("DÉPART", infos.heureDepart ?? "—", accent: true)
-                    tuile("TOURS", infos.nbTours ?? infos.km ?? "—", suffixe: tours(infos))
+                HStack(spacing: 0) {
+                    bandeauColonne("ÉCHAUFF.", valeur: creneau.map { $0.echauffement.formatted(heure) } ?? "—", accent: .warning)
+                    separateurBandeau
+                    bandeauColonne("APPEL", valeur: infos.heure ?? "—")
+                    separateurBandeau
+                    bandeauColonne("DÉPART", valeur: infos.heureDepart ?? "—", accent: .accent)
+                    separateurBandeau
+                    bandeauColonne("TOURS", valeur: infos.nbTours ?? infos.km ?? "—", suffixe: tours(infos))
                 }
-                if let creneau, echauffement > 0 {
-                    HStack(spacing: 12) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Eyebrow("ÉCHAUFFEMENT")
-                            Text(creneau.echauffement.formatted(heure)).font(.cond(34)).foregroundStyle(Theme.warning)
-                        }
-                        Spacer()
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text("\(dureeTexte(echauffement)) avant l'appel").font(.barlow(13, .semibold)).foregroundStyle(Theme.textSoft)
-                            Text("Réglable dans Profil").font(.barlow(12)).foregroundStyle(Theme.muted)
-                        }
-                    }
-                    .padding(.horizontal, 14).padding(.vertical, 12)
-                    .background(Theme.surface2, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                }
+                .padding(10)
+                .background(Theme.surface2, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.line, lineWidth: 1))
             }
             if case .ouvert = statut { InscriptionBloc(manifestation: manifestation, course: course) }
             if boutonAgenda, let creneau { boutonAgendaView(course: course, creneau: creneau) }
         }
-        .card(border: Theme.accent, radius: 24, padding: 18)
+        .padding(18)
+        .background(Theme.surface2, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(Theme.line, lineWidth: 1))
     }
 
     private func tuile(_ titre: String, _ valeur: String, accent: Bool = false, suffixe: String? = nil) -> some View {
@@ -392,6 +437,35 @@ struct ManifestationDetailView: View {
         .padding(.horizontal, 14).padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.surface2, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var separateurBandeau: some View {
+        Rectangle()
+            .fill(Theme.line)
+            .frame(width: 1, height: 46)
+            .padding(.horizontal, 6)
+    }
+
+    @ViewBuilder
+    private func bandeauColonne(_ titre: String, valeur: String, accent: ThemeAccent? = nil, suffixe: String? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(titre)
+                .font(.barlow(10, .semibold))
+                .tracking(0.8)
+                .foregroundStyle(accent?.color ?? Theme.muted)
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(valeur)
+                    .font(.barlow(17, .semibold))
+                    .foregroundStyle(accent?.color ?? Theme.text)
+                    .lineLimit(1)
+                if let suffixe {
+                    Text(suffixe)
+                        .font(.barlow(11, .semibold))
+                        .foregroundStyle(Theme.muted)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func tours(_ infos: ConfigNiveau.Infos) -> String? {
@@ -413,21 +487,27 @@ struct ManifestationDetailView: View {
         let ajoute = agenda.ajoute(manifestation: manifestation.id, course: course.id)
         VStack(spacing: 10) {
             if ajoute {
-                Label("Ajouté à l'agenda · \(plage)", systemImage: "checkmark.circle.fill")
-                    .font(.cond(17)).tracking(1.5).textCase(.uppercase).foregroundStyle(Theme.accent)
-                    .frame(maxWidth: .infinity, minHeight: 52)
-                    .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.accent, lineWidth: 1))
-                #if os(iOS)
-                Link("Ouvrir dans Calendrier", destination: URL(string: "calshow:\(creneau.debut.timeIntervalSinceReferenceDate)")!)
-                    .font(.cond(15, .semibold)).tracking(1.5).textCase(.uppercase).foregroundStyle(Theme.textSoft)
-                #endif
-                if manifestation.adresse?.coordinate != nil {
-                    Button { majTrajet(course) } label: {
-                        Label(majTrajetEnCours ? "Calcul du trajet…" : "Mettre à jour le temps de trajet", systemImage: "car.circle")
+                HStack(spacing: 12) {
+                    Label("Inscrit à l'agenda (\(plage))", systemImage: "checkmark.circle.fill")
+                        .font(.barlow(13, .semibold))
+                        .foregroundStyle(Theme.text)
+                        .lineLimit(1)
+                    Spacer()
+                    if manifestation.adresse?.coordinate != nil {
+                        Button {
+                            majTrajet(course)
+                        } label: {
+                            Label("TRAJET", systemImage: "car")
+                                .font(.barlow(12, .semibold))
+                                .foregroundStyle(Theme.text)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(majTrajetEnCours)
                     }
-                    .buttonStyle(OutlineButtonStyle())
-                    .disabled(majTrajetEnCours)
                 }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             } else {
                 Button { ajouter(course) } label: {
                     Label("Ajouter à l'agenda · \(plage)", systemImage: "calendar.badge.plus")
@@ -525,7 +605,7 @@ struct ManifestationDetailView: View {
                     }
                     .padding(16)
                 }
-                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .background(Theme.surface2, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
                 .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(Theme.line, lineWidth: 1))
             }
@@ -709,6 +789,18 @@ private enum MeteoDiagnostic: LocalizedError {
         switch self {
         case .dateIllisible(let d): "Date de début illisible : « \(d) »."
         case .pasDeCoordonnees: "Pas de coordonnées exploitables pour ce lieu."
+        }
+    }
+}
+
+private enum ThemeAccent {
+    case accent
+    case warning
+
+    var color: Color {
+        switch self {
+        case .accent: Theme.accent
+        case .warning: Theme.warning
         }
     }
 }

@@ -10,45 +10,16 @@ struct ProfilView: View {
     @State private var profil: Profil?
     @State private var photo: UIImage?
     @State private var anciennesOuvert = false
+    @State private var carteSelectionnee = 0
 
     var body: some View {
         ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: 22) {
                 entete
 
-                section("MES CARTES") {
-                    if cartes.cartes.isEmpty {
-                        Text("Aucune carte trouvée.").font(.barlow(14)).foregroundStyle(Theme.muted).card()
-                    }
-                    ForEach(cartes.cartesActives) { CarteRow(carte: $0) }
-                    if !anciennesCartes.isEmpty { anciennesCartesBloc }
-                }
+                section("MES CARTES") { mesCartesSection }
 
-                section("RÉGLAGES ET PRÉFÉRENCES") {
-                    VStack(spacing: 10) {
-                        NavigationLink {
-                            ReglagesManifestationsView()
-                        } label: {
-                            ReglageLinkCard(
-                                icone: "slider.horizontal.3",
-                                titre: "Filtres de manifestation",
-                                sousTitre: resumeManifestations
-                            )
-                        }
-                        .buttonStyle(.plain)
-
-                        NavigationLink {
-                            ReglagesAgendaView()
-                        } label: {
-                            ReglageLinkCard(
-                                icone: "calendar.badge.clock",
-                                titre: "Synchronisation Agenda",
-                                sousTitre: resumeAgenda
-                            )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
+                section("RÉGLAGES ET PRÉFÉRENCES") { reglagesSection }
 
                 section("À PROPOS") {
                     MentionNonOfficielle().card()
@@ -57,7 +28,7 @@ struct ProfilView: View {
                 Button("Se déconnecter") { auth.logout() }
                     .buttonStyle(PrimaryButtonStyle(danger: true))
             }
-            .padding(.horizontal, 20).padding(.top, 24).padding(.bottom, 24)
+            .padding(.horizontal, 20).padding(.top, 24).padding(.bottom, 120)
             .containerRelativeFrame(.horizontal)
         }
         .screenBackground()
@@ -93,6 +64,18 @@ struct ProfilView: View {
                     Text([carte.comite, carte.club].filter { !$0.isEmpty }.joined(separator: " · ")).font(.barlow(14)).foregroundStyle(Theme.muted)
                 }
             }
+            Spacer(minLength: 8)
+            NavigationLink {
+                ReglagesManifestationsView()
+            } label: {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(Theme.textSoft)
+                    .frame(width: 40, height: 40)
+                    .background(Theme.surface2, in: Circle())
+                    .overlay(Circle().stroke(Theme.line, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
         }
     }
 
@@ -141,6 +124,99 @@ struct ProfilView: View {
         }
     }
 
+    private var mesCartesSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Circle().fill(Theme.accent).frame(width: 6, height: 6)
+                Text("\(cartesActives.count) actives")
+                    .font(.barlow(11, .semibold))
+                    .foregroundStyle(Theme.muted)
+                Spacer()
+                Text(etiquetteSaison)
+                    .font(.barlow(11, .semibold))
+                    .foregroundStyle(Theme.accent)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(Theme.accent.opacity(0.1), in: Capsule())
+            }
+
+            if cartesActives.isEmpty {
+                Text("Aucune carte trouvée.").font(.barlow(14)).foregroundStyle(Theme.muted).card()
+            } else {
+                TabView(selection: $carteSelectionnee) {
+                    ForEach(Array(cartesActives.enumerated()), id: \.offset) { index, carte in
+                        LicenceWalletCard(carte: carte)
+                            .padding(.horizontal, 2)
+                            .tag(index)
+                    }
+                }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .frame(height: 238)
+
+                HStack {
+                    HStack(spacing: 6) {
+                        ForEach(cartesActives.indices, id: \.self) { index in
+                            Capsule()
+                                .fill(index == carteSelectionnee ? Theme.accent : Theme.faint.opacity(0.5))
+                                .frame(width: index == carteSelectionnee ? 20 : 6, height: 6)
+                        }
+                    }
+                    Spacer()
+                    Label("Balayer pour changer de licence", systemImage: "hand.draw")
+                        .font(.barlow(11))
+                        .foregroundStyle(Theme.muted)
+                }
+
+                Button {
+                    // Aligné avec la maquette : CTA présent, comportement déjà géré dans le détail de manifestation.
+                } label: {
+                    Label("Présenter le QR code au commissaire", systemImage: "qrcode")
+                        .font(.barlow(15, .semibold))
+                        .foregroundStyle(Theme.accent)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .background(Theme.surface2, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.line, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+            }
+
+            if !anciennesCartes.isEmpty { anciennesCartesBloc }
+        }
+    }
+
+    private var reglagesSection: some View {
+        VStack(spacing: 0) {
+            NavigationLink {
+                ReglagesManifestationsView()
+            } label: {
+                ReglageLinkRow(
+                    icone: "slider.horizontal.3",
+                    iconeCouleur: Theme.accent,
+                    titre: "Filtres de manifestation",
+                    sousTitre: resumeManifestations
+                )
+            }
+            .buttonStyle(.plain)
+
+            Divider().overlay(Theme.line)
+
+            NavigationLink {
+                ReglagesAgendaView()
+            } label: {
+                ReglageLinkRow(
+                    icone: "calendar",
+                    iconeCouleur: Theme.secondary,
+                    titre: "Synchronisation Agenda",
+                    sousTitre: resumeAgenda,
+                    sousTitreCouleur: Theme.accent
+                )
+            }
+            .buttonStyle(.plain)
+        }
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(Theme.line, lineWidth: 1))
+    }
+
     private func dureeTexte(_ minutes: Int) -> String {
         minutes < 60 ? "\(minutes) min" : String(format: "%d h %02d", minutes / 60, minutes % 60)
     }
@@ -155,35 +231,128 @@ struct ProfilView: View {
         guard boutonAgenda else { return "Inactif" }
         return "Actif (+\(dureeTexte(echauffement)) échauffement)"
     }
+
+    private var cartesActives: [Carte] { cartes.cartesActives }
+
+    private var etiquetteSaison: String {
+        guard let saison = cartesActives.first?.saison, !saison.isEmpty else { return "Saison" }
+        return "Saison \(saison)"
+    }
 }
 
-private struct ReglageLinkCard: View {
+private struct ReglageLinkRow: View {
     let icone: String
+    let iconeCouleur: Color
     let titre: String
     let sousTitre: String
+    var sousTitreCouleur: Color = Theme.muted
 
     var body: some View {
         HStack(spacing: 14) {
             Image(systemName: icone)
                 .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(Theme.accent)
-                .frame(width: 46, height: 46)
-                .background(Theme.accent.opacity(0.12), in: Circle())
+                .foregroundStyle(iconeCouleur)
+                .frame(width: 36, height: 36)
+                .background(iconeCouleur.opacity(0.12), in: Circle())
             VStack(alignment: .leading, spacing: 3) {
                 Text(titre)
-                    .font(.cond(24, .semibold))
+                    .font(.barlow(20, .semibold))
                     .foregroundStyle(Theme.text)
                     .multilineTextAlignment(.leading)
                 Text(sousTitre)
                     .font(.barlow(14, .semibold))
-                    .foregroundStyle(Theme.muted)
+                    .foregroundStyle(sousTitreCouleur)
             }
             Spacer()
             Image(systemName: "chevron.right")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(Theme.faint)
         }
-        .card(padding: 14)
+        .padding(16)
+    }
+}
+
+private struct LicenceWalletCard: View {
+    let carte: Carte
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [Color(hex: 0x12241D), Color(hex: 0x040907)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay(
+                    Circle()
+                        .fill(Color(hex: 0x85F8C4).opacity(0.26))
+                        .blur(radius: 36)
+                        .frame(width: 120, height: 120)
+                        .offset(x: 210, y: -30)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .stroke(Color(hex: 0x85F8C4).opacity(0.25), lineWidth: 1)
+                )
+
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    HStack(spacing: 6) {
+                        Image(systemName: "wave.3.right")
+                        Text("UFOLEP PASS")
+                    }
+                    .font(.barlow(11, .semibold))
+                    .foregroundStyle(Color(hex: 0x85F8C4))
+
+                    Spacer()
+
+                    HStack(spacing: 6) {
+                        Circle().fill(Color(hex: 0x85F8C4)).frame(width: 6, height: 6)
+                        Text("ACTIVE")
+                    }
+                    .font(.barlow(11, .semibold))
+                    .foregroundStyle(Color(hex: 0x85F8C4))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color(hex: 0x85F8C4).opacity(0.2), in: Capsule())
+                    .overlay(Capsule().stroke(Color(hex: 0x85F8C4).opacity(0.35), lineWidth: 1))
+                }
+
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(carte.discipline.uppercased()).font(.cond(22, .semibold)).foregroundStyle(Color.white)
+                    Text(carte.saison).font(.cond(22, .semibold)).foregroundStyle(Color(hex: 0x85F8C4))
+                }
+                Text(carte.niveau ?? "Licence Compétition Nationale")
+                    .font(.barlow(11))
+                    .foregroundStyle(Color.white.opacity(0.75))
+
+                FlowPills {
+                    if let niveau = carte.niveau {
+                        Pill(text: niveau, systemImage: "medal.fill", fg: Color(hex: 0x85F8C4), bg: Color.white.opacity(0.1))
+                    }
+                    if let age = carte.categorieAge {
+                        Pill(text: age, systemImage: "person.fill", fg: Color.white.opacity(0.9), bg: Color.white.opacity(0.1))
+                    }
+                }
+
+                Divider().overlay(Color.white.opacity(0.12))
+                HStack {
+                    Label("Expire le \(carte.expireLe)", systemImage: "calendar")
+                        .font(.barlow(12))
+                        .foregroundStyle(Color.white.opacity(0.78))
+                    Spacer()
+                    Image(systemName: "qrcode")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(Color.white)
+                        .frame(width: 30, height: 30)
+                        .background(Color.white.opacity(0.16), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+            }
+            .padding(20)
+        }
+        .shadow(color: Color.black.opacity(0.18), radius: 20, x: 0, y: 10)
     }
 }
 
