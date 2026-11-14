@@ -14,6 +14,8 @@ enum Theme {
     static let secondary = Color(hex: 0x0058BC)
     static let danger = Color.red
     static let warning = Color.orange
+    /// Liste d'envies (signet, pastille, bloc date).
+    static let envie = Color(hex: 0xE5B000)
 
     /// Plus de police custom : on garde la typo SF Pro native.
     static func registerFonts() {
@@ -299,12 +301,19 @@ struct DateAndTime: View {
     let date: Date?
     var heure: String? = nil
     var highlighted = false
+    /// Couleur de mise en avant (état de la course) ; `highlighted` seul utilise l'accent.
+    var teinte: Color? = nil
+    /// Texte de l'heure sur fond teinté (sombre pour les teintes claires comme le jaune).
+    var texteSurTeinte: Color = Theme.bg
+
+    private var actif: Bool { highlighted || teinte != nil }
+    private var couleur: Color { teinte ?? Theme.accent }
 
     var body: some View {
         VStack(spacing: 4) {
             Text(date.map { Self.jour.string(from: $0) } ?? "—")
                 .font(.cond(22, .semibold))
-                .foregroundStyle(highlighted ? Theme.accent : Theme.text)
+                .foregroundStyle(actif ? couleur : Theme.text)
             Text(date.map { Self.mois.string(from: $0).uppercased().replacingOccurrences(of: ".", with: "") } ?? "")
                 .font(.cond(11, .semibold))
                 .tracking(1.2)
@@ -312,15 +321,15 @@ struct DateAndTime: View {
             if let heure, !heure.isEmpty {
                 Text(heure)
                     .font(.barlow(11, .semibold))
-                    .foregroundStyle(highlighted ? Theme.bg : Theme.accent)
+                    .foregroundStyle(actif ? texteSurTeinte : Theme.accent)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 2)
-                    .background(highlighted ? Theme.accent : Theme.accent.opacity(0.13), in: Capsule())
+                    .background(actif ? couleur : Theme.accent.opacity(0.13), in: Capsule())
             }
         }
         .frame(width: 62)
         .frame(minHeight: 74)
-        .background(highlighted ? Theme.accent.opacity(0.1) : Theme.surface2, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(actif ? couleur.opacity(0.1) : Theme.surface2, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private static let jour: DateFormatter = formatter("dd")

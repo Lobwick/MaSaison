@@ -302,7 +302,7 @@ struct ManifestationsView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
                     chipStatut(.tous, texte: "Tous", icone: nil, couleur: Theme.text, fond: Theme.text, texteCouleur: Theme.bg)
-                    chipStatut(.envie, texte: "Envies (\(suivi.envies.count))", icone: "bookmark.fill", couleur: Theme.warning, fond: Theme.warning.opacity(0.12), texteCouleur: Theme.warning)
+                    chipStatut(.envie, texte: "Envies (\(suivi.envies.count))", icone: "bookmark.fill", couleur: Theme.envie, fond: Theme.envie.opacity(0.12), texteCouleur: Theme.envie)
                     chipStatut(.inscrit, texte: "Inscrit (\(suivi.inscrits.count))", icone: "hourglass", couleur: Theme.secondary, fond: Theme.secondary.opacity(0.12), texteCouleur: Theme.secondary)
                     chipStatut(.valide, texte: "Validé (\(suivi.valides.count))", icone: "checkmark.circle.fill", couleur: Theme.accent, fond: Theme.accent.opacity(0.12), texteCouleur: Theme.accent)
                 }
@@ -1414,7 +1414,8 @@ private struct CourseListRow: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            DateAndTime(date: manifestation.debutDate, heure: heure, highlighted: inscrit)
+            DateAndTime(date: manifestation.debutDate, heure: heure, teinte: etat.couleur,
+                        texteSurTeinte: etat == .envie ? Theme.text : Theme.bg)
 
             VStack(alignment: .leading, spacing: 6) {
                 Text(manifestation.libelle)
@@ -1431,9 +1432,14 @@ private struct CourseListRow: View {
             if etat.envieModifiable {
                 Color.clear.frame(width: 36, height: 36) // emplacement du signet « liste d'envies »
             }
-            Image(systemName: etat == .valide ? "checkmark.circle.fill" : etat == .inscrit ? "hourglass.circle.fill" : "chevron.right")
-                .font(.system(size: inscrit ? 22 : 14, weight: .semibold))
-                .foregroundStyle(inscrit ? couleurEtat : Theme.faint)
+            if inscrit {
+                Image(systemName: etat == .valide ? "checkmark.circle.fill" : "hourglass.circle.fill")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(couleurEtat)
+            }
+            Image(systemName: "chevron.right")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Theme.faint)
         }
         .card(border: inscrit ? couleurEtat.opacity(0.35) : Theme.line, radius: 24, padding: 12)
     }

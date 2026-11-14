@@ -14,6 +14,16 @@ enum EtatCourse {
     /// Inscription payée (ou gratuite) : plus rien à faire.
     case valide
 
+    /// Envie jaune, inscrit bleu, validé vert ; `nil` sans suivi.
+    var couleur: Color? {
+        switch self {
+        case .aucun: nil
+        case .envie: Theme.envie
+        case .inscrit: Theme.secondary
+        case .valide: Theme.accent
+        }
+    }
+
     /// L'envie ne se règle à la main que tant qu'on n'est pas inscrit.
     var envieModifiable: Bool { self == .aucun || self == .envie }
 }
@@ -192,7 +202,7 @@ struct BoutonEnvie: View {
             } label: {
                 Image(systemName: actif ? "bookmark.fill" : "bookmark")
                     .font(.system(size: taille, weight: .semibold))
-                    .foregroundStyle(actif ? Theme.warning : Theme.faint)
+                    .foregroundStyle(actif ? Theme.envie : Theme.faint)
                     .frame(width: 36, height: 36)
                     .contentShape(Rectangle())
                     .contentTransition(.symbolEffect(.replace))
@@ -224,7 +234,7 @@ struct EtatCourseBadge: View {
     private var apparence: (String, String, Color)? {
         switch etat {
         case .aucun: nil
-        case .envie: ("Envie", "bookmark.fill", Theme.warning)
+        case .envie: ("Envie", "bookmark.fill", Theme.envie)
         case .inscrit: ("Inscrit · à payer", "hourglass", Theme.secondary)
         case .valide: ("Validé", "checkmark.seal.fill", Theme.accent)
         }
