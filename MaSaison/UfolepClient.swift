@@ -68,9 +68,7 @@ final class UfolepClient {
         request.setValue("fr-FR,fr;q=0.9", forHTTPHeaderField: "Accept-Language")
         request.setValue(Self.baseURL.absoluteString + "/", forHTTPHeaderField: "Referer")
 
-        let (data, response) = try await session.data(for: request)
-        try check(response)
-        if response.url?.path.contains("/auth/login") == true { throw UfolepError.sessionExpiree }
+        let data = try await viaCache(request, fraicheur: .disciplines)
         return String(decoding: data, as: UTF8.self)
     }
 
@@ -87,7 +85,7 @@ final class UfolepClient {
         if let discipline { query.append(.init(name: "discipline_code", value: discipline)) }
         // Laravel : structures_ids[]=75&structures_ids[]=78
         for id in structureIDs { query.append(.init(name: "structures_ids[]", value: String(id))) }
-        let data = try await getJSON("manifestations/calendrier-federal/query", query)
+        let data = try await getJSON("manifestations/calendrier-federal/query", query, fraicheur: .listeCourses)
         let reponse = try JSONDecoder().decode(Page<Manifestation>.self, from: data)
         let suite = reponse.lastPage.map { page < $0 } ?? (reponse.data.count >= Self.manifestationsParPage)
         return (reponse.data, suite && !reponse.data.isEmpty)
@@ -114,7 +112,7 @@ final class UfolepClient {
     /// Correspondant (mail et téléphone) : seulement dans la page de la fiche, dont la prop `:manifestation` embarque tout le JSON.
     func fetchCorrespondant(manifestationID: Int) async throws -> Correspondant? {
         struct Enveloppe: Decodable { let correspondants: [Correspondant]? }
-        let html = try await getHTML("manifestations/show/\(manifestationID)")
+        let html = try await getHTML("manifestations/show/\(manifestationID)", fraicheur: .ficheManifestation)
         guard let debut = html.range(of: ":manifestation=\""),
               let fin = html[debut.upperBound...].firstIndex(of: "\"") else { return nil }
         let json = String(html[debut.upperBound..<fin])
@@ -128,29 +126,26 @@ final class UfolepClient {
 
     /// Inscriptions du licencié (à venir et passées).
     func fetchInscriptions() async throws -> [Inscription] {
-        HTMLParsing.inscriptions(from: try await getHTML("manifestations/liste-inscriptions"))
+        HTMLParsing.inscriptions(from: try await getHTML("manifestations/liste-inscriptions", fraicheur: .inscriptions))
     }
 
     /// Classements du licencié dans les manifestations passées.
     func fetchResultats() async throws -> [Resultat] {
-        HTMLParsing.resultats(from: try await getHTML("manifestations/resultats"))
+        HTMLParsing.resultats(from: try await getHTML("manifestations/resultats", fraicheur: .resultats))
     }
 
     func fetchCartes() async throws -> [Carte] {
-        HTMLParsing.cartes(from: try await getHTML("cartes-pass/cartes"))
+        HTMLParsing.cartes(from: try await getHTML("cartes-pass/cartes", fraicheur: .cartes))
     }
 
     func fetchProfil() async throws -> Profil {
-        HTMLParsing.profil(from: try await getHTML("infos"))
+        HTMLParsing.profil(from: try await getHTML("infos", fraicheur: .profil))
     }
 
-    private func getHTML(_ path: String) async throws -> String {
+    private func getHTML(_ path: String, fraicheur: Fraicheur = .aucune) async throws -> String {
         var request = URLRequest(url: Self.baseURL.appending(path: path))
         request.setValue("text/html,application/xhtml+xml", forHTTPHeaderField: "Accept")
-        let (data, response) = try await session.data(for: request)
-        if response.url?.path.contains("/auth/login") == true { throw UfolepError.sessionExpiree }
-        try check(response)
-        return String(decoding: data, as: UTF8.self)
+        return String(decoding: try await viaCache(request, fraicheur: fraicheur), as: UTF8.self)
     }
 
     /// Les disciplines sont injectées dans le HTML de la page (prop `disciplines`).
@@ -180,7 +175,7 @@ final class UfolepClient {
             let data = try await getJSON("structures/lazy-tree", [
                 URLQueryItem(name: "structure_id", value: String(structureID)),
                 URLQueryItem(name: "mode", value: mode),
-            ])
+            ], fraicheur: .departements)
             return try JSONDecoder().decode([TreeNode].self, from: data)
         }
         let regions = try await nodes(1, mode: "root").first?.children ?? []
@@ -202,23 +197,68 @@ final class UfolepClient {
     func fetchGroupes(manifestationID: Int) async throws -> [GroupeNiveaux] {
         let data = try await getJSON("manifestations/calendrier-federal/niveaux", [
             URLQueryItem(name: "manifestation_id", value: String(manifestationID)),
-        ])
+        ], fraicheur: .groupes)
         return try JSONDecoder().decode([GroupeNiveaux].self, from: data)
     }
 
-    private func getJSON(_ path: String, _ query: [URLQueryItem]) async throws -> Data {
+    private func getJSON(_ path: String, _ query: [URLQueryItem], fraicheur: Fraicheur = .aucune) async throws -> Data {
         var components = URLComponents(url: Self.baseURL.appending(path: path), resolvingAgainstBaseURL: false)!
         components.queryItems = query
         var request = URLRequest(url: components.url!)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
+        return try await viaCache(request, fraicheur: fraicheur)
+    }
+
+    // MARK: cache des réponses
+
+    /// GET avec cache : réponse gardée réutilisée tant qu'elle est fraîche, sinon réseau puis mise en cache.
+    /// Hors ligne, l'ancienne réponse sert de secours. Une page de connexion (session expirée) n'est jamais gardée.
+    private func viaCache(_ request: URLRequest, fraicheur: Fraicheur) async throws -> Data {
+        guard let url = request.url else { throw UfolepError.http(0) }
+        let cache = ReponsesCache.shared
+        guard case .duree(let duree) = fraicheur else { return try await reseau(request) }
+
+        let gardee = cache.lire(url)
+        if ReponsesCache.cacheSeulement {
+            guard let gardee else { throw CancellationError() }
+            return gardee.data
+        }
+        if !ReponsesCache.ignorer, let gardee, gardee.age < duree { return gardee.data }
+        do {
+            let data = try await reseau(request)
+            cache.ecrire(data, pour: url)
+            return data
+        } catch let erreur as URLError where gardee != nil && erreur.code != .cancelled {
+            return gardee!.data
+        }
+    }
+
+    private func reseau(_ request: URLRequest) async throws -> Data {
         let (data, response) = try await session.data(for: request)
         if response.url?.path.contains("/auth/login") == true { throw UfolepError.sessionExpiree }
         try check(response)
         return data
     }
 
+    /// Exécute `operation` en ne lisant que le cache (même périmé) : affichage immédiat avant l'appel réseau.
+    /// `nil` si une des réponses nécessaires n'est pas en cache.
+    func depuisCache<T>(_ operation: () async throws -> T) async -> T? {
+        try? await ReponsesCache.$cacheSeulement.withValue(true) { try await operation() }
+    }
+
+    /// Exécute `operation` sans cache (tirer pour rafraîchir) ; les réponses reçues remplacent le cache.
+    func sansCache<T>(_ operation: () async throws -> T) async rethrows -> T {
+        try await ReponsesCache.$ignorer.withValue(true) { try await operation() }
+    }
+
+    /// Données personnelles modifiées par une action (inscription, paiement) : à relire au prochain appel.
+    func invaliderSuivi() {
+        ReponsesCache.shared.invalider(chemins: ["manifestations/liste-inscriptions", "commandes"])
+    }
+
     func clearSession() {
+        ReponsesCache.shared.vider()
         session.configuration.httpCookieStorage?.removeCookies(since: .distantPast)
     }
 

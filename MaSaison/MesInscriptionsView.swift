@@ -84,7 +84,7 @@ struct MesInscriptionsView: View {
         .overlay { if isLoading && inscriptions.isEmpty { ProgressView().tint(Theme.accent) } }
         .screenBackground()
         .toolbar(.hidden, for: .navigationBar)
-        .refreshable { await load() }
+        .refreshable { await auth.client.sansCache { await load() } }
         .task { await load() }
         .task { await chargerPhotoProfil() }
     }
@@ -203,6 +203,11 @@ struct MesInscriptionsView: View {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
+        // affichage immédiat des dernières données connues, puis mise à jour si le cache est périmé
+        if inscriptions.isEmpty, let gardees = await auth.client.depuisCache({ try await auth.client.fetchInscriptions() }) {
+            inscriptions = gardees
+            resultats = await auth.client.depuisCache { try await auth.client.fetchResultats() } ?? resultats
+        }
         do {
             inscriptions = try await auth.withSession { try await auth.client.fetchInscriptions() }
             await chargerHorairesInscriptions()

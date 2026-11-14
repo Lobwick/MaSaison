@@ -53,7 +53,10 @@ struct InscriptionBloc: View {
             }
         }
         // après le paiement : inscrit → validé dans le suivi des courses
-        .sheet(isPresented: $paiementOuvert, onDismiss: { Task { await etatInitial(); await suivi.actualiser(auth) } }) {
+        .sheet(isPresented: $paiementOuvert, onDismiss: {
+            auth.client.invaliderSuivi()   // le paiement a pu changer inscriptions et commandes
+            Task { await etatInitial(); await suivi.actualiser(auth) }
+        }) {
             PaiementWebView(url: UfolepClient.urlPaiement(commande))
         }
         .task { await etatInitial() }
@@ -103,6 +106,7 @@ struct InscriptionBloc: View {
         progression = "Enregistrement de l'inscription…"
         do {
             try await auth.withSession { try await auth.client.enregistrer(ticketID: ticket.id, final: false) }
+            auth.client.invaliderSuivi()
         } catch {
             etat = .erreur(error.localizedDescription)
             return
@@ -117,6 +121,7 @@ struct InscriptionBloc: View {
         do {
             let validation = try await auth.withSession { try await auth.client.calculerTicketUnique(manifestationID: manifestation.id) }
             try await auth.withSession { try await auth.client.enregistrerInscriptionUnique(manifestationID: manifestation.id, ticketID: validation.id) }
+            auth.client.invaliderSuivi()
         } catch {
             // l'inscription est enregistrée : on propose de reprendre là où ça s'est arrêté
             etat = .enregistree
