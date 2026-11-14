@@ -1,25 +1,25 @@
-import CoreText
 import SwiftUI
 
-/// Direction visuelle sombre (voir la maquette Claude Design) : fond #0B0D10, cartes anthracite, un accent menthe.
+/// Direction visuelle claire inspirée des apps Apple : fond blanc, cartes en matériau, accent système.
 enum Theme {
-    static let bg = Color(hex: 0x0B0D10)
-    static let surface = Color(hex: 0x14181D)
-    static let surface2 = Color(hex: 0x1C2229)
-    static let line = Color(hex: 0x232A32)
-    static let text = Color(hex: 0xF2F5F7)
-    static let textSoft = Color(hex: 0xC9D1D8)
-    static let muted = Color(hex: 0x8C97A3)
-    static let faint = Color(hex: 0x5A6672)
-    static let accent = Color(hex: 0x2DE2A6)
-    static let danger = Color(hex: 0xFF4D5E)
-    static let warning = Color(hex: 0xFFB020)
+    static let bg = Color(hex: 0xFCF8FB)
+    static let surface = Color.white
+    static let surface2 = Color(hex: 0xF6F3F5)
+    static let line = Color.black.opacity(0.06)
+    static let text = Color(hex: 0x111318)
+    static let textSoft = Color(hex: 0x2B2F36)
+    static let muted = Color(hex: 0x6B7380)
+    static let faint = Color(hex: 0x98A0AD)
+    static let accent = Color(hex: 0x006948)
+    static let secondary = Color(hex: 0x0058BC)
+    static let danger = Color.red
+    static let warning = Color.orange
+    /// Liste d'envies (signet, pastille, bloc date).
+    static let envie = Color(hex: 0xE5B000)
 
-    /// Enregistre Barlow / Barlow Condensed (fichiers .ttf du bundle) sans passer par Info.plist.
+    /// Plus de police custom : on garde la typo SF Pro native.
     static func registerFonts() {
-        for url in Bundle.main.urls(forResourcesWithExtension: "ttf", subdirectory: nil) ?? [] {
-            CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
-        }
+        // no-op
     }
 }
 
@@ -32,24 +32,43 @@ extension Color {
 extension Font {
     enum Poids { case medium, semibold, bold }
 
-    /// Barlow Condensed : titres, chiffres, libellés en majuscules.
-    static func cond(_ size: CGFloat, _ poids: Poids = .bold) -> Font {
-        let nom = switch poids {
-        case .medium: "BarlowCondensed-Medium"
-        case .semibold: "BarlowCondensed-SemiBold"
-        case .bold: "BarlowCondensed-Bold"
+    /// SF Pro (texte standard iOS).
+    static func sfPro(_ size: CGFloat, _ poids: Poids = .medium) -> Font {
+        let weight: Font.Weight = switch poids {
+        case .medium: .regular
+        case .semibold: .semibold
+        case .bold: .bold
         }
-        return .custom(nom, size: size, relativeTo: .title)
+        return .system(size: size, weight: weight, design: .default)
     }
 
-    /// Barlow : texte courant.
-    static func barlow(_ size: CGFloat, _ poids: Poids = .medium) -> Font {
-        let nom = switch poids {
-        case .medium: "Barlow-Regular"
-        case .semibold: "Barlow-Medium"
-        case .bold: "Barlow-SemiBold"
+    /// SF Compact-like (équivalent visuel via design rounded).
+    static func sfCompact(_ size: CGFloat, _ poids: Poids = .bold) -> Font {
+        let weight: Font.Weight = switch poids {
+        case .medium: .medium
+        case .semibold: .semibold
+        case .bold: .bold
         }
-        return .custom(nom, size: size, relativeTo: .body)
+        return .system(size: size, weight: weight, design: .rounded)
+    }
+
+    /// SF Mono pour les valeurs/horaires.
+    static func sfMono(_ size: CGFloat, _ poids: Poids = .medium) -> Font {
+        let weight: Font.Weight = switch poids {
+        case .medium: .regular
+        case .semibold: .semibold
+        case .bold: .bold
+        }
+        return .system(size: size, weight: weight, design: .monospaced)
+    }
+
+    // Compatibilité existante
+    static func cond(_ size: CGFloat, _ poids: Poids = .bold) -> Font {
+        sfCompact(size, poids)
+    }
+
+    static func barlow(_ size: CGFloat, _ poids: Poids = .medium) -> Font {
+        sfPro(size, poids)
     }
 }
 
@@ -102,7 +121,7 @@ struct StatusTag: View {
 }
 
 extension View {
-    /// Carte anthracite arrondie.
+    /// Carte « liquid glass ».
     func card(border: Color = Theme.line, radius: CGFloat = 20, padding: CGFloat = 16) -> some View {
         self.padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -114,34 +133,152 @@ extension View {
         background(Theme.bg.ignoresSafeArea())
     }
 
-    /// Titre de page : Barlow Condensed 40, majuscules.
+    /// Titre de page style Apple.
     func pageTitle() -> some View {
-        font(.cond(40)).textCase(.uppercase).foregroundStyle(Theme.text)
+        font(.cond(34)).textCase(.uppercase).foregroundStyle(Theme.text)
     }
 }
 
-struct PrimaryButtonStyle: ButtonStyle {
-    var danger = false
+/// En-tête standardisé : titre à gauche, notifications puis profil à droite.
+struct TitleAndProfileActions: View {
+    let title: String
+    var photo: UIImage?
+    var accent: Color = Theme.accent
 
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.cond(17)).tracking(1.5).textCase(.uppercase)
-            .foregroundStyle(danger ? Theme.danger : Theme.bg)
-            .frame(maxWidth: .infinity, minHeight: 52)
-            .background(danger ? .clear : Theme.accent, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay { if danger { RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color(hex: 0x4A2229), lineWidth: 1) } }
-            .opacity(configuration.isPressed ? 0.8 : 1)
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(title).pageTitle()
+            Spacer()
+            ProfileActions(photo: photo, accent: accent)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
-struct OutlineButtonStyle: ButtonStyle {
+/// Bouton rond 36 pt de l'en-tête (retour, fermer…), au style des actions notifications / profil.
+struct HeaderCircleButton: View {
+    let systemImage: String
+    let label: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Theme.text)
+                .frame(width: 36, height: 36)
+                .background(Theme.surface2, in: Circle())
+                .overlay(Circle().stroke(Theme.line, lineWidth: 1))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+    }
+}
+
+/// Notifications puis photo de profil (ouvre l'onglet Profil).
+struct ProfileActions: View {
+    var photo: UIImage?
+    var accent: Color = Theme.accent
+    @AppStorage("ongletSelectionne") private var onglet = 0
+
+    var body: some View {
+        HStack(spacing: 10) {
+           /* Image(systemName: "bell")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Theme.textSoft)
+                .frame(width: 36, height: 36)
+                .background(Theme.surface2, in: Circle())
+                .overlay(Circle().stroke(Theme.line, lineWidth: 1))*/
+            Button {
+                onglet = 4
+            } label: {
+                Group {
+                    if let photo {
+                        Image(uiImage: photo).resizable().scaledToFill()
+                    } else {
+                        Image(systemName: "person.crop.circle.fill")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(accent.opacity(0.9))
+                    }
+                }
+                .frame(width: 36, height: 36)
+                .background(accent.opacity(0.08), in: Circle())
+                .clipShape(Circle())
+                .overlay(Circle().stroke(Theme.line, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Ouvrir le profil")
+        }
+    }
+}
+
+/// Ton d'une `ActionRow` : action attendue (fond accent), secondaire (fond clair bordé) ou destructive.
+enum ActionTon { case principal, secondaire, danger }
+
+/// Visuel d'une action : pastille icône, titre et sous-titre, chevron. À placer dans un `Button`, `Link`,
+/// `ShareLink` ou `NavigationLink` avec `.buttonStyle(ActionRowStyle())` ; sinon utiliser `ActionRow`.
+struct ActionRowLabel: View {
+    let titre: String
+    var sousTitre: String?
+    let icone: String
+    var ton: ActionTon = .secondaire
+
+    private var plein: Bool { ton == .principal }
+    private var teinte: Color { ton == .danger ? Theme.danger : Theme.accent }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icone)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(plein ? Color.white : teinte)
+                .frame(width: 40, height: 40)
+                .background(plein ? Color.white.opacity(0.18) : teinte.opacity(0.12),
+                            in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(titre)
+                    .font(.cond(18)).tracking(1.2).textCase(.uppercase)
+                    .foregroundStyle(plein ? Color.white : ton == .danger ? Theme.danger : Theme.text)
+                if let sousTitre {
+                    Text(sousTitre)
+                        .font(.barlow(12))
+                        .foregroundStyle(plein ? Color.white.opacity(0.85) : Theme.muted)
+                        .lineLimit(2)
+                }
+            }
+            .lineLimit(1).minimumScaleFactor(0.85)
+            Spacer(minLength: 8)
+            Image(systemName: "chevron.right")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(plein ? Color.white.opacity(0.8) : Theme.faint)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
+        .background(plein ? Theme.accent : Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .stroke(plein ? Color.clear : ton == .danger ? Theme.danger.opacity(0.3) : Theme.line, lineWidth: 1))
+        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+}
+
+/// Action d'une carte sous forme de bouton (voir `ActionRowLabel`).
+struct ActionRow: View {
+    let titre: String
+    var sousTitre: String?
+    let icone: String
+    var ton: ActionTon = .secondaire
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) { ActionRowLabel(titre: titre, sousTitre: sousTitre, icone: icone, ton: ton) }
+            .buttonStyle(ActionRowStyle())
+    }
+}
+
+/// Légère opacité à l'appui, sans autre décoration.
+struct ActionRowStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.cond(17)).tracking(1.5).textCase(.uppercase)
-            .foregroundStyle(Theme.accent)
-            .frame(maxWidth: .infinity, minHeight: 52)
-            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.accent, lineWidth: 1))
-            .opacity(configuration.isPressed ? 0.8 : 1)
+        configuration.label.opacity(configuration.isPressed ? 0.8 : 1)
     }
 }
 
@@ -153,12 +290,13 @@ struct IconButton: View {
     let action: () -> Void
 
     var body: some View {
+        let fond = danger ? AnyShapeStyle(Color.clear) : AnyShapeStyle(Theme.surface)
         Button(action: action) {
             Image(systemName: systemImage).font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(danger ? Theme.danger : Theme.text)
                 .frame(width: 44, height: 44)
-                .background(danger ? .clear : Theme.surface2, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay { if danger { RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color(hex: 0x4A2229), lineWidth: 1) } }
+                .background(fond, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay { if danger { RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.danger.opacity(0.35), lineWidth: 1) } }
         }
         .accessibilityLabel(label)
     }
@@ -177,6 +315,52 @@ struct DateBlock: View {
         }
         .frame(width: 52, height: 56)
         .background(highlighted ? Theme.accent.opacity(0.13) : Theme.surface2, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private static let jour: DateFormatter = formatter("dd")
+    private static let mois: DateFormatter = formatter("MMM")
+    private static func formatter(_ format: String) -> DateFormatter {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "fr_FR")
+        f.dateFormat = format
+        return f
+    }
+}
+
+/// Bloc date + heure (heure en pastille), utilisé pour les listes de courses.
+struct DateAndTime: View {
+    let date: Date?
+    var heure: String? = nil
+    var highlighted = false
+    /// Couleur de mise en avant (état de la course) ; `highlighted` seul utilise l'accent.
+    var teinte: Color? = nil
+    /// Texte de l'heure sur fond teinté (sombre pour les teintes claires comme le jaune).
+    var texteSurTeinte: Color = Theme.bg
+
+    private var actif: Bool { highlighted || teinte != nil }
+    private var couleur: Color { teinte ?? Theme.accent }
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Text(date.map { Self.jour.string(from: $0) } ?? "—")
+                .font(.cond(22, .semibold))
+                .foregroundStyle(actif ? couleur : Theme.text)
+            Text(date.map { Self.mois.string(from: $0).uppercased().replacingOccurrences(of: ".", with: "") } ?? "")
+                .font(.cond(11, .semibold))
+                .tracking(1.2)
+                .foregroundStyle(Theme.muted)
+            if let heure, !heure.isEmpty {
+                Text(heure)
+                    .font(.barlow(11, .semibold))
+                    .foregroundStyle(actif ? texteSurTeinte : Theme.accent)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2)
+                    .background(actif ? couleur : Theme.accent.opacity(0.13), in: Capsule())
+            }
+        }
+        .frame(width: 62)
+        .frame(minHeight: 74)
+        .background(actif ? couleur.opacity(0.1) : Theme.surface2, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private static let jour: DateFormatter = formatter("dd")

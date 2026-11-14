@@ -52,10 +52,8 @@ struct LoginView: View {
                     Text(error).font(.barlow(14)).foregroundStyle(Theme.danger)
                 }
 
-                Button(action: submit) {
-                    if auth.isLoading { ProgressView().tint(Theme.bg) } else { Text("Se connecter") }
-                }
-                .buttonStyle(PrimaryButtonStyle())
+                ActionRow(titre: "Se connecter", sousTitre: auth.isLoading ? "Connexion en cours…" : "Avec ton compte UFOLEP",
+                          icone: auth.isLoading ? "hourglass" : "person.crop.circle.badge.checkmark", ton: .principal, action: submit)
                 .disabled(username.isEmpty || password.isEmpty || auth.isLoading)
                 .opacity(username.isEmpty || password.isEmpty ? 0.5 : 1)
 
@@ -67,7 +65,7 @@ struct LoginView: View {
 
                 MentionNonOfficielle()
             }
-            .padding(.horizontal, 20).padding(.top, 48).padding(.bottom, 40)
+            .padding(.horizontal, 20).padding(.top, 48).padding(.bottom, 120)
         }
         .scrollDismissesKeyboard(.interactively)
         .screenBackground()

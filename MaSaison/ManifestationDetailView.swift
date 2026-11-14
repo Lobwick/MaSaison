@@ -8,8 +8,10 @@ struct ManifestationDetailView: View {
     @Environment(AuthModel.self) private var auth
     @Environment(CartesStore.self) private var cartes
     @Environment(AgendaStore.self) private var agenda
+    @Environment(SuiviCoursesStore.self) private var suivi
     @AppStorage("boutonAgenda") private var boutonAgenda = true
     @AppStorage("echauffementMinutes") private var echauffement = 60
+    @Environment(\.dismiss) private var dismiss
 
     let manifestation: Manifestation
     @State private var groupes: [GroupeNiveaux] = []
@@ -32,14 +34,13 @@ struct ManifestationDetailView: View {
     @State private var documentEnCours: URL?
     @State private var erreurDocument: String?
     @State private var correspondant: Correspondant?
-    @Environment(\.colorScheme) private var schema
+    @State private var photoProfil: UIImage?
 
     var body: some View {
         ScrollView(.vertical) {
             LazyVStack(alignment: .leading, spacing: 22) {
+                barreNavigationDetail
                 entete
-
-                if !miennes.isEmpty { AstuceView(tip: AppTips.detail) }
 
                 if miennes.isEmpty {
                     if !autres.isEmpty {
@@ -67,11 +68,12 @@ struct ManifestationDetailView: View {
 
                 if let errorMessage { Text(errorMessage).font(.barlow(14)).foregroundStyle(Theme.danger) }
             }
-            .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 40)
+            .padding(.horizontal, 20).padding(.top, 4).padding(.bottom, 120)
             .containerRelativeFrame(.horizontal)
         }
         .screenBackground()
-        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar(.hidden, for: .navigationBar)
+        .navigationBarBackButtonHidden(true)
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
@@ -80,6 +82,11 @@ struct ManifestationDetailView: View {
         .task { await chargerTrace() }
         .task { await chargerMeteo() }
         .task { correspondant = try? await auth.withSession { try await auth.client.fetchCorrespondant(manifestationID: manifestation.id) } }
+        .task { await chargerPhotoProfil() }
+        .task {
+            suivi.memoriser([manifestation])
+            await suivi.actualiser(auth)
+        }
         // déjà autorisé : le trajet se calcule sans rien demander ; sinon un bouton propose de le faire
         .task { if TrajetService.autorise { await calculerTrajet() } }
         .quickLookPreview($apercu)
@@ -137,12 +144,18 @@ struct ManifestationDetailView: View {
                     Text("Correspondant : \(nom)").font(.barlow(14)).foregroundStyle(Theme.muted)
                 }
                 if let correspondant, correspondant.telephoneURL != nil || correspondant.emailURL != nil {
-                    HStack(spacing: 10) {
+                    VStack(spacing: 8) {
                         if let tel = correspondant.telephoneURL {
-                            Link(destination: tel) { Label("Appeler", systemImage: "phone") }.buttonStyle(OutlineButtonStyle())
+                            Link(destination: tel) {
+                                ActionRowLabel(titre: "Appeler", sousTitre: correspondant.numSpecifique, icone: "phone")
+                            }
+                            .buttonStyle(ActionRowStyle())
                         }
                         if let mail = correspondant.emailURL {
-                            Link(destination: mail) { Label("Écrire", systemImage: "envelope") }.buttonStyle(OutlineButtonStyle())
+                            Link(destination: mail) {
+                                ActionRowLabel(titre: "Écrire", sousTitre: correspondant.mailSpecifique, icone: "envelope")
+                            }
+                            .buttonStyle(ActionRowStyle())
                         }
                     }
                 }
@@ -254,28 +267,48 @@ struct ManifestationDetailView: View {
         }
     }
 
-    private func meteoCarte(_ m: Meteo) -> some View {
+    /// Créneau des courses (de l'appel à l'arrivée) : les miennes, sinon toutes ; `nil` si aucun horaire.
+    private var creneauCourses: DateInterval? {
+        AgendaService.plage(manifestation: manifestation, courses: (miennes.isEmpty ? toutes : miennes).map(\.course))
+    }
+
+    private func meteoCarte(_ jour: Meteo) -> some View {
+        let m = creneauCourses.map { jour.pendant($0) } ?? jour
         func degres(_ t: Double) -> String { "\(Int(t.rounded()))°" }
-        return VStack(alignment: .leading, spacing: 12) {
-            Eyebrow("MÉTÉO")
+        let heure = Date.FormatStyle(date: .omitted, time: .shortened).locale(Locale(identifier: "fr_FR"))
+        let temperature = Int(m.tempMin.rounded()) == Int(m.tempMax.rounded())
+            ? degres(m.tempMax) : "\(degres(m.tempMin)) – \(degres(m.tempMax))"
+        let pluie = m.pluieMm >= 0.1 ? String(format: "%.1f mm", m.pluieMm).replacingOccurrences(of: ".", with: ",") : "Sec"
+        let rafales = m.rafalesKmh.map { "Rafales \(Int($0.rounded()))" } ?? "km/h"
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Eyebrow("MÉTÉO")
+                Spacer()
+                Text(m.plage.map { "\($0.start.formatted(heure)) – \($0.end.formatted(heure))" } ?? "Journée")
+                    .font(.barlow(12, .semibold)).foregroundStyle(Theme.muted)
+            }
             HStack(spacing: 14) {
-                Image(systemName: m.symbole).symbolRenderingMode(.multicolor).font(.system(size: 38))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(m.libelle).font(.barlow(16, .semibold)).foregroundStyle(Theme.text)
-                    Text("\(degres(m.tempMin)) / \(degres(m.tempMax))").font(.cond(30)).foregroundStyle(Theme.text)
+                IconeMeteo(symbole: m.symbole, taille: 44)
+                    .frame(width: 56)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(temperature).font(.cond(36)).foregroundStyle(Theme.text)
+                    Text(m.libelle).font(.barlow(15, .semibold)).foregroundStyle(Theme.textSoft)
                 }
                 Spacer()
             }
-            HStack(spacing: 10) {
-                tuile("PLUIE", "\(m.probaPluie)", suffixe: "%")
-                tuile("VENT", "\(Int(m.ventKmh.rounded()))", suffixe: "km/h")
+            HStack(spacing: 8) {
+                tuileMeteo(icone: "thermometer.medium", couleur: .orange, titre: "TEMP.", valeur: degres(m.tempMax), detail: "min \(degres(m.tempMin))")
+                tuileMeteo(icone: "cloud.rain.fill", couleur: .blue, titre: "PLUIE", valeur: "\(m.probaPluie)%", detail: pluie)
+                tuileMeteo(icone: "wind", couleur: .teal, titre: "VENT", valeur: "\(Int(m.ventKmh.rounded()))", detail: rafales)
             }
             HStack(spacing: 10) {
-                Text("Prévision pour le jour de l'épreuve").font(.barlow(12)).foregroundStyle(Theme.muted)
+                Text(m.plage == nil ? "Prévision pour le jour de l'épreuve" : "Prévision pendant la course")
+                    .font(.barlow(12)).foregroundStyle(Theme.muted)
                 Spacer()
                 if let mention = mentionMeteo {
                     VStack(alignment: .trailing, spacing: 2) {
-                        AsyncImage(url: schema == .dark ? mention.logoSombre : mention.logoClair) { $0.resizable().scaledToFit() } placeholder: { Color.clear }
+                        // les cartes sont claires même en mode sombre forcé : logo pour fond clair
+                        AsyncImage(url: mention.logoClair) { $0.resizable().scaledToFit() } placeholder: { Color.clear }
                             .frame(height: 14)
                         Link("Autres sources de données", destination: mention.mentionsLegales)
                             .font(.barlow(11)).foregroundStyle(Theme.muted)
@@ -283,26 +316,63 @@ struct ManifestationDetailView: View {
                 }
             }
         }
-        .card(radius: 24, padding: 16)
+        .padding(16)
+        .background(Theme.surface2, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(Theme.line, lineWidth: 1))
         .accessibilityElement(children: .combine)
+    }
+
+    private func tuileMeteo(icone: String, couleur: Color, titre: String, valeur: String, detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 5) {
+                Image(systemName: icone).symbolRenderingMode(.hierarchical).foregroundStyle(couleur)
+                    .font(.system(size: 13, weight: .semibold))
+                Text(titre).font(.barlow(10, .semibold)).tracking(1).foregroundStyle(Theme.muted)
+            }
+            Text(valeur).font(.cond(26)).foregroundStyle(Theme.text)
+                .lineLimit(1).minimumScaleFactor(0.7)
+            Text(detail).font(.barlow(11)).foregroundStyle(Theme.muted)
+                .lineLimit(1).minimumScaleFactor(0.8)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.line, lineWidth: 1))
     }
 
     // MARK: en-tête
 
+    private var barreNavigationDetail: some View {
+        // retour, nom de la manifestation (titre de la page, sur plusieurs lignes si besoin), puis notifications / profil
+        HStack(alignment: .top, spacing: 12) {
+            HeaderCircleButton(systemImage: "chevron.left", label: "Retour") { dismiss() }
+            Text(manifestation.libelle)
+                .font(.cond(28)).textCase(.uppercase).foregroundStyle(Theme.text)
+                .lineSpacing(-2)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 2)
+                .accessibilityAddTraits(.isHeader)
+            ProfileActions(photo: photoProfil, accent: Theme.accent)
+        }
+        .padding(.top, 4)
+    }
+
     private var entete: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Eyebrow([manifestation.modele?.libelle, manifestation.structure?.nom].compactMap { $0 }.joined(separator: " · "))
-            Text(manifestation.libelle).font(.cond(52)).textCase(.uppercase).foregroundStyle(Theme.text)
-                .lineSpacing(-6).fixedSize(horizontal: false, vertical: true)
-            if let debut = manifestation.debutDate {
-                Text(dateTexte(debut)).font(.cond(20, .semibold)).tracking(1).foregroundStyle(Theme.textSoft)
+            HStack(alignment: .center, spacing: 8) {
+                if let debut = manifestation.debutDate {
+                    Text(dateTexte(debut)).font(.barlow(14, .semibold)).tracking(0.6).foregroundStyle(Theme.muted)
+                }
+                Spacer(minLength: 0)
+                BoutonEnvie(manifestation: manifestation, taille: 22)
             }
-            StatutBadge(statut: statut)
+            statutBandeau
         }
     }
 
     private func dateTexte(_ debut: Date) -> String {
-        let f = Date.fr("EEE d MMMM yyyy")
+        let f = Date.fr("EEEE d MMMM yyyy")
         var s = f.string(from: debut).uppercased().replacingOccurrences(of: ".", with: ".")
         if let fin = Date.fr("dd/MM/yyyy").date(from: manifestation.dateFin), fin > debut {
             s += " → " + Date.fr("EEE d MMMM").string(from: fin).uppercased()
@@ -310,33 +380,70 @@ struct ManifestationDetailView: View {
         return s
     }
 
+    private func chargerPhotoProfil() async {
+        do {
+            let profil = try await auth.withSession { try await auth.client.fetchProfil() }
+            guard let url = profil.photoURL else { return }
+            if let data = try? await auth.withSession({ try await auth.client.download(url) }) {
+                photoProfil = UIImage(data: data)
+            }
+        } catch {
+            photoProfil = nil
+        }
+    }
+
     // MARK: statut d'inscription
 
     private var statut: Statut {
         let now = Date()
-        let debut = manifestation.datesInscriptionStart ?? ""
-        let fin = manifestation.datesInscriptionEnd ?? ""
+        let debut = Self.dateHeure(manifestation.datesInscriptionStart, manifestation.horaireInscriptionStart)
+        let fin = Self.dateHeure(manifestation.datesInscriptionEnd, manifestation.horaireInscriptionEnd)
         if let start = Self.parse(manifestation.datesInscriptionStart, manifestation.horaireInscriptionStart), now < start {
             return .aVenir("Inscriptions ouvrent le \(debut)")
         }
-        if let end = Self.parse(manifestation.datesInscriptionEnd, manifestation.horaireInscriptionEnd), now > end {
+        if let end = manifestation.clotureInscriptions, now > end {
             return .ferme("Inscriptions fermées depuis le \(fin)")
         }
         guard manifestation.inscriptible == true else { return .ferme("Inscriptions fermées") }
         return .ouvert(fin.isEmpty ? "Inscriptions ouvertes" : "Inscriptions ouvertes jusqu'au \(fin)")
     }
 
+    /// « 18/11/2026 - 23:59 » ; la date seule si l'heure manque.
+    private static func dateHeure(_ date: String?, _ heure: String?) -> String {
+        guard let date, !date.isEmpty else { return "" }
+        guard let h = heureCourte(heure) else { return date }
+        return "\(date) - \(h)"
+    }
+
+    /// « 23:59:00 » ou « 23:59 » → « 23:59 ».
+    private static func heureCourte(_ heure: String?) -> String? {
+        guard let h = heure?.trimmingCharacters(in: .whitespaces), h.count >= 5 else { return nil }
+        return String(h.prefix(5))
+    }
+
     private static func parse(_ date: String?, _ heure: String?) -> Date? {
-        guard let date else { return nil }
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.timeZone = TimeZone(identifier: "Europe/Paris")
-        f.dateFormat = "dd/MM/yyyy HH:mm"
-        return f.date(from: "\(date) \(heure ?? "00:00")")
+        Manifestation.dateInscription(date, heure)
     }
 
     enum Statut {
         case ouvert(String), ferme(String), aVenir(String)
+    }
+
+    @ViewBuilder
+    private var statutBandeau: some View {
+        switch statut {
+        case .ferme(let texte):
+            Label(texte, systemImage: "lock.fill")
+                .font(.barlow(13, .semibold))
+                .foregroundStyle(Theme.danger)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Theme.danger.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.danger.opacity(0.2), lineWidth: 1))
+        default:
+            StatutBadge(statut: statut)
+        }
     }
 
     // MARK: ma course
@@ -353,31 +460,25 @@ struct ManifestationDetailView: View {
             if infos.isEmpty {
                 Text("Horaires non communiqués").font(.barlow(14)).foregroundStyle(Theme.muted)
             } else {
-                HStack(spacing: 10) {
-                    tuile("APPEL", infos.heure ?? "—")
-                    tuile("DÉPART", infos.heureDepart ?? "—", accent: true)
-                    tuile("TOURS", infos.nbTours ?? infos.km ?? "—", suffixe: tours(infos))
+                HStack(spacing: 0) {
+                    bandeauColonne("ÉCHAUFF.", valeur: creneau.map { $0.echauffement.formatted(heure) } ?? "—", accent: .warning)
+                    separateurBandeau
+                    bandeauColonne("APPEL", valeur: infos.heure ?? "—")
+                    separateurBandeau
+                    bandeauColonne("DÉPART", valeur: infos.heureDepart ?? "—", accent: .accent)
+                    separateurBandeau
+                    bandeauColonne("TOURS", valeur: infos.nbTours ?? infos.km ?? "—", suffixe: tours(infos))
                 }
-                if let creneau, echauffement > 0 {
-                    HStack(spacing: 12) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Eyebrow("ÉCHAUFFEMENT")
-                            Text(creneau.echauffement.formatted(heure)).font(.cond(34)).foregroundStyle(Theme.warning)
-                        }
-                        Spacer()
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text("\(dureeTexte(echauffement)) avant l'appel").font(.barlow(13, .semibold)).foregroundStyle(Theme.textSoft)
-                            Text("Réglable dans Profil").font(.barlow(12)).foregroundStyle(Theme.muted)
-                        }
-                    }
-                    .padding(.horizontal, 14).padding(.vertical, 12)
-                    .background(Theme.surface2, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                }
+                .padding(10)
+                .background(Theme.surface2, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.line, lineWidth: 1))
             }
             if case .ouvert = statut { InscriptionBloc(manifestation: manifestation, course: course) }
             if boutonAgenda, let creneau { boutonAgendaView(course: course, creneau: creneau) }
         }
-        .card(border: Theme.accent, radius: 24, padding: 18)
+        .padding(18)
+        .background(Theme.surface2, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(Theme.line, lineWidth: 1))
     }
 
     private func tuile(_ titre: String, _ valeur: String, accent: Bool = false, suffixe: String? = nil) -> some View {
@@ -392,6 +493,35 @@ struct ManifestationDetailView: View {
         .padding(.horizontal, 14).padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.surface2, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var separateurBandeau: some View {
+        Rectangle()
+            .fill(Theme.line)
+            .frame(width: 1, height: 46)
+            .padding(.horizontal, 6)
+    }
+
+    @ViewBuilder
+    private func bandeauColonne(_ titre: String, valeur: String, accent: ThemeAccent? = nil, suffixe: String? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(titre)
+                .font(.barlow(10, .semibold))
+                .tracking(0.8)
+                .foregroundStyle(accent?.color ?? Theme.muted)
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(valeur)
+                    .font(.barlow(17, .semibold))
+                    .foregroundStyle(accent?.color ?? Theme.text)
+                    .lineLimit(1)
+                if let suffixe {
+                    Text(suffixe)
+                        .font(.barlow(11, .semibold))
+                        .foregroundStyle(Theme.muted)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func tours(_ infos: ConfigNiveau.Infos) -> String? {
@@ -413,28 +543,30 @@ struct ManifestationDetailView: View {
         let ajoute = agenda.ajoute(manifestation: manifestation.id, course: course.id)
         VStack(spacing: 10) {
             if ajoute {
-                Label("Ajouté à l'agenda · \(plage)", systemImage: "checkmark.circle.fill")
-                    .font(.cond(17)).tracking(1.5).textCase(.uppercase).foregroundStyle(Theme.accent)
-                    .frame(maxWidth: .infinity, minHeight: 52)
-                    .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.accent, lineWidth: 1))
-                #if os(iOS)
-                Link("Ouvrir dans Calendrier", destination: URL(string: "calshow:\(creneau.debut.timeIntervalSinceReferenceDate)")!)
-                    .font(.cond(15, .semibold)).tracking(1.5).textCase(.uppercase).foregroundStyle(Theme.textSoft)
-                #endif
-                if manifestation.adresse?.coordinate != nil {
-                    Button { majTrajet(course) } label: {
-                        Label(majTrajetEnCours ? "Calcul du trajet…" : "Mettre à jour le temps de trajet", systemImage: "car.circle")
+                HStack(spacing: 12) {
+                    Label("Inscrit à l'agenda (\(plage))", systemImage: "checkmark.circle.fill")
+                        .font(.barlow(13, .semibold))
+                        .foregroundStyle(Theme.text)
+                        .lineLimit(1)
+                    Spacer()
+                    if manifestation.adresse?.coordinate != nil {
+                        Button {
+                            majTrajet(course)
+                        } label: {
+                            Label("TRAJET", systemImage: "car")
+                                .font(.barlow(12, .semibold))
+                                .foregroundStyle(Theme.text)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(majTrajetEnCours)
                     }
-                    .buttonStyle(OutlineButtonStyle())
-                    .disabled(majTrajetEnCours)
                 }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             } else {
-                Button { ajouter(course) } label: {
-                    Label("Ajouter à l'agenda · \(plage)", systemImage: "calendar.badge.plus")
-                }
-                .buttonStyle(PrimaryButtonStyle())
-                Text(texteInclus)
-                    .font(.barlow(12)).foregroundStyle(Theme.muted)
+                ActionRow(titre: "Ajouter à l'agenda", sousTitre: "\(plage) · \(texteInclus)",
+                          icone: "calendar.badge.plus") { ajouter(course) }
             }
             if let infoAgenda { Text(infoAgenda).font(.barlow(13)).foregroundStyle(Theme.accent) }
             if let erreurAgenda { Text(erreurAgenda).font(.barlow(13)).foregroundStyle(Theme.danger) }
@@ -443,10 +575,10 @@ struct ManifestationDetailView: View {
 
     /// Ce que contiendra l'événement ; le trajet n'y est que si la position est déjà autorisée.
     private var texteInclus: String {
-        var elements = ["le lieu"]
-        if manifestation.gpxURL != nil { elements.append("le lien du tracé GPX") }
-        if trajet != nil || TrajetService.autorise { elements.append("le temps de trajet") }
-        return "L'événement agenda inclut " + elements.formatted(.list(type: .and, width: .standard).locale(Locale(identifier: "fr_FR"))) + "."
+        var elements = ["lieu"]
+        if manifestation.gpxURL != nil { elements.append("tracé GPX") }
+        if trajet != nil || TrajetService.autorise { elements.append("trajet") }
+        return elements.formatted(.list(type: .and, width: .standard).locale(Locale(identifier: "fr_FR"))) + " inclus"
     }
 
     private func ajouter(_ course: ConfigNiveau) {
@@ -525,7 +657,7 @@ struct ManifestationDetailView: View {
                     }
                     .padding(16)
                 }
-                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .background(Theme.surface2, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
                 .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(Theme.line, lineWidth: 1))
             }
@@ -533,9 +665,9 @@ struct ManifestationDetailView: View {
                 if trace.aProfil { profilAltimetrique(trace) }
                 if let fichierGPX {
                     ShareLink(item: fichierGPX) {
-                        Label("Télécharger le tracé GPX", systemImage: "arrow.down.circle")
+                        ActionRowLabel(titre: "Tracé GPX", sousTitre: "Télécharger ou envoyer vers une app GPS", icone: "arrow.down.circle")
                     }
-                    .buttonStyle(OutlineButtonStyle())
+                    .buttonStyle(ActionRowStyle())
                 }
             } else {
                 VStack(alignment: .leading, spacing: 4) {
@@ -709,6 +841,18 @@ private enum MeteoDiagnostic: LocalizedError {
         switch self {
         case .dateIllisible(let d): "Date de début illisible : « \(d) »."
         case .pasDeCoordonnees: "Pas de coordonnées exploitables pour ce lieu."
+        }
+    }
+}
+
+private enum ThemeAccent {
+    case accent
+    case warning
+
+    var color: Color {
+        switch self {
+        case .accent: Theme.accent
+        case .warning: Theme.warning
         }
     }
 }

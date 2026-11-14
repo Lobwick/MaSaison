@@ -50,6 +50,7 @@ final class AuthModel {
     func logout() {
         client.clearSession()
         CredentialStore.delete()
+        MeteoCache.vider()
         isLoggedIn = false
     }
 }

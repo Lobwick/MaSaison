@@ -5,6 +5,7 @@ struct ContentView: View {
     @State private var filtres = FiltresStore()
     @State private var cartes = CartesStore()
     @State private var agenda = AgendaStore()
+    @State private var suivi = SuiviCoursesStore()
 
     var body: some View {
         Group {
@@ -20,7 +21,10 @@ struct ContentView: View {
         .environment(filtres)
         .environment(cartes)
         .environment(agenda)
+        .environment(suivi)
         .task { await auth.restoreSession() }
+        // au lancement et à la connexion : états à jour et rappels de clôture reprogrammés
+        .task(id: auth.isLoggedIn) { if auth.isLoggedIn { await suivi.actualiser(auth) } }
     }
 }
 
@@ -29,25 +33,107 @@ struct MainTabView: View {
     @Environment(FiltresStore.self) private var filtres
     @Environment(CartesStore.self) private var cartes
     @AppStorage("ongletSelectionne") private var onglet = 0
+    @AppStorage("hideFloatingTabBar") private var hideFloatingTabBar = false
+    /// Identité de la pile de navigation de chaque onglet : la changer ramène l'onglet à son écran racine.
+    @State private var racines: [Int: UUID] = [:]
+
+    /// Onglets déjà ouverts : créés à la première visite puis gardés en vie (état, liste chargée, défilement).
+    @State private var visites: Set<Int> = []
 
     var body: some View {
-        TabView(selection: $onglet) {
-            Tab("Accueil", systemImage: "house", value: 0) {
-                NavigationStack { MesInscriptionsView() }
-            }
-            Tab("Courses", systemImage: "flag.checkered", value: 1) {
-                NavigationStack { ManifestationsView() }
-            }
-            Tab("Profil", systemImage: "person.crop.circle", value: 2) {
-                NavigationStack { ProfilView() }
+        ZStack {
+            ForEach(Array(visites.union([onglet])).sorted(), id: \.self) { index in
+                let actif = index == onglet
+                ecran(index)
+                    // toucher l'onglet actif change cet identifiant et ramène l'onglet à son écran racine
+                    .id(racines[index])
+                    .opacity(actif ? 1 : 0)
+                    .allowsHitTesting(actif)
+                    .accessibilityHidden(!actif)
             }
         }
-        .tint(Theme.accent)
+        .onChange(of: onglet, initial: true) { _, nouveau in visites.insert(nouveau) }
+        .safeAreaInset(edge: .bottom) {
+            if !hideFloatingTabBar {
+                // toucher l'onglet déjà actif revient à son écran racine (comme une tab bar iOS)
+                FloatingTabBar(selection: $onglet) { racines[$0] = UUID() }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .padding(.bottom, 8)
+            }
+        }
         .task {
             await filtres.loadIfNeeded(auth: auth)
             await cartes.load(auth: auth)
             filtres.appliquerOrigine(cartes: cartes.cartes)
         }
+    }
+
+    @ViewBuilder
+    private func ecran(_ index: Int) -> some View {
+        switch index {
+        case 0:
+            NavigationStack { MesInscriptionsView() }
+        case 1:
+            NavigationStack {
+                ManifestationsView(vueInitiale: .liste, afficherSelecteurVue: false, afficherRecherche: true)
+            }
+        case 2:
+            NavigationStack {
+                ManifestationsView(vueInitiale: .carte, afficherSelecteurVue: false, afficherRecherche: false)
+            }
+        case 3:
+            NavigationStack {
+                ManifestationsView(vueInitiale: .calendrier, afficherSelecteurVue: false, afficherRecherche: false)
+            }
+        default:
+            NavigationStack { ProfilView() }
+        }
+    }
+}
+
+private struct FloatingTabBar: View {
+    @Binding var selection: Int
+    /// Appelé quand on touche l'onglet déjà sélectionné.
+    var reselection: (Int) -> Void = { _ in }
+
+    private let items: [(index: Int, title: String, icon: String, selectedIcon: String)] = [
+        (0, "Accueil", "house", "house.fill"),
+        (1, "Courses", "bicycle", "bicycle"),
+      //  (2, "Carte", "map", "map.fill"),
+        //(3, "Calendrier", "calendar", "calendar"),
+        (4, "Profil", "person", "person.fill")
+    ]
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(items, id: \.index) { item in
+                let actif = selection == item.index
+                Button {
+                    if selection == item.index { reselection(item.index) } else { selection = item.index }
+                } label: {
+                    VStack(spacing: 3) {
+                        Image(systemName: actif ? item.selectedIcon : item.icon)
+                            .font(.system(size: 20, weight: actif ? .semibold : .medium))
+                        Text(item.title)
+                            .font(.barlow(11, actif ? .semibold : .medium))
+                        Circle()
+                            .fill(actif ? Theme.accent : .clear)
+                            .frame(width: 4, height: 4)
+                    }
+                    .foregroundStyle(actif ? Theme.accent : Theme.muted)
+                    .frame(maxWidth: .infinity, minHeight: 56)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(item.title)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Theme.surface, in: Capsule())
+        .overlay(Capsule().stroke(Theme.line, lineWidth: 1))
+        .shadow(color: Color.black.opacity(0.06), radius: 10, x: 0, y: 4)
     }
 }
 

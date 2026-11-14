@@ -48,7 +48,7 @@ struct MultiSelectView<ID: Hashable>: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 24)
+            .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 120)
         }
         .searchable(text: $recherche, prompt: "Numéro ou nom")
         .screenBackground()
