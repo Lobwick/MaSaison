@@ -53,8 +53,8 @@ struct ProfileView: View {
     // MARK: header
 
     private var header: some View {
+        // no title bar: its profile button would open this same page; the member's name is the page title
         VStack(alignment: .leading, spacing: 12) {
-            TitleAndProfileActions(title: "PROFIL", photo: photo, accent: Theme.accent)
             HStack(spacing: 16) {
                 Group {
                     if let photo {
@@ -68,6 +68,7 @@ struct ProfileView: View {
                 .overlay(Circle().stroke(Theme.accent, lineWidth: 3))
                 VStack(alignment: .leading, spacing: 4) {
                     Text(displayName).font(.cond(34)).textCase(.uppercase).foregroundStyle(Theme.text).lineLimit(2)
+                        .accessibilityAddTraits(.isHeader)
                     if let card = cardStore.activeCards.first {
                         Text([card.committee, card.club].filter { !$0.isEmpty }.joined(separator: " · ")).font(.barlow(14)).foregroundStyle(Theme.muted)
                     }
@@ -75,7 +76,7 @@ struct ProfileView: View {
                 Spacer(minLength: 8)
             }
         }
-        .padding(.top, -4)
+        .padding(.top, 4)
     }
 
     /// "Monsieur MOULIN Felix" → "MOULIN Felix"
