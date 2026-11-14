@@ -34,6 +34,8 @@ struct MainTabView: View {
     @Environment(CartesStore.self) private var cartes
     @AppStorage("ongletSelectionne") private var onglet = 0
     @AppStorage("hideFloatingTabBar") private var hideFloatingTabBar = false
+    /// Identité de la pile de navigation de chaque onglet : la changer ramène l'onglet à son écran racine.
+    @State private var racines: [Int: UUID] = [:]
 
     var body: some View {
         ZStack {
@@ -56,9 +58,11 @@ struct MainTabView: View {
                 NavigationStack { ProfilView() }
             }
         }
+        .id(racines[onglet])
         .safeAreaInset(edge: .bottom) {
             if !hideFloatingTabBar {
-                FloatingTabBar(selection: $onglet)
+                // toucher l'onglet déjà actif revient à son écran racine (comme une tab bar iOS)
+                FloatingTabBar(selection: $onglet) { racines[$0] = UUID() }
                     .padding(.horizontal, 16)
                     .padding(.top, 8)
                     .padding(.bottom, 8)
@@ -74,6 +78,8 @@ struct MainTabView: View {
 
 private struct FloatingTabBar: View {
     @Binding var selection: Int
+    /// Appelé quand on touche l'onglet déjà sélectionné.
+    var reselection: (Int) -> Void = { _ in }
 
     private let items: [(index: Int, title: String, icon: String, selectedIcon: String)] = [
         (0, "Accueil", "house", "house.fill"),
@@ -88,7 +94,7 @@ private struct FloatingTabBar: View {
             ForEach(items, id: \.index) { item in
                 let actif = selection == item.index
                 Button {
-                    selection = item.index
+                    if selection == item.index { reselection(item.index) } else { selection = item.index }
                 } label: {
                     VStack(spacing: 3) {
                         Image(systemName: actif ? item.selectedIcon : item.icon)
