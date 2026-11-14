@@ -144,41 +144,72 @@ struct TitleAndProfileActions: View {
     let title: String
     var photo: UIImage?
     var accent: Color = Theme.accent
-    @AppStorage("ongletSelectionne") private var onglet = 0
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Text(title).pageTitle()
             Spacer()
-            HStack(spacing: 10) {
-                Image(systemName: "bell")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Theme.textSoft)
-                    .frame(width: 36, height: 36)
-                    .background(Theme.surface2, in: Circle())
-                    .overlay(Circle().stroke(Theme.line, lineWidth: 1))
-                Button {
-                    onglet = 4
-                } label: {
-                    Group {
-                        if let photo {
-                            Image(uiImage: photo).resizable().scaledToFill()
-                        } else {
-                            Image(systemName: "person.crop.circle.fill")
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundStyle(accent.opacity(0.9))
-                        }
-                    }
-                    .frame(width: 36, height: 36)
-                    .background(accent.opacity(0.08), in: Circle())
-                    .clipShape(Circle())
-                    .overlay(Circle().stroke(Theme.line, lineWidth: 1))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Ouvrir le profil")
-            }
+            ProfileActions(photo: photo, accent: accent)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Bouton rond 36 pt de l'en-tête (retour, fermer…), au style des actions notifications / profil.
+struct HeaderCircleButton: View {
+    let systemImage: String
+    let label: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Theme.text)
+                .frame(width: 36, height: 36)
+                .background(Theme.surface2, in: Circle())
+                .overlay(Circle().stroke(Theme.line, lineWidth: 1))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+    }
+}
+
+/// Notifications puis photo de profil (ouvre l'onglet Profil).
+struct ProfileActions: View {
+    var photo: UIImage?
+    var accent: Color = Theme.accent
+    @AppStorage("ongletSelectionne") private var onglet = 0
+
+    var body: some View {
+        HStack(spacing: 10) {
+           /* Image(systemName: "bell")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Theme.textSoft)
+                .frame(width: 36, height: 36)
+                .background(Theme.surface2, in: Circle())
+                .overlay(Circle().stroke(Theme.line, lineWidth: 1))*/
+            Button {
+                onglet = 4
+            } label: {
+                Group {
+                    if let photo {
+                        Image(uiImage: photo).resizable().scaledToFill()
+                    } else {
+                        Image(systemName: "person.crop.circle.fill")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(accent.opacity(0.9))
+                    }
+                }
+                .frame(width: 36, height: 36)
+                .background(accent.opacity(0.08), in: Circle())
+                .clipShape(Circle())
+                .overlay(Circle().stroke(Theme.line, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Ouvrir le profil")
+        }
     }
 }
 

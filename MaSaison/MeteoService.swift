@@ -1,5 +1,6 @@
 import CoreLocation
 import Foundation
+import SwiftUI
 import WeatherKit
 
 /// Prévision météo du jour d'une manifestation.
@@ -48,6 +49,38 @@ struct MeteoHeure: Codable {
     let pluieMm: Double
     let ventKmh: Double
     let rafalesKmh: Double?
+}
+
+/// Icône météo aux couleurs fixées : l'app force le mode sombre avec des fonds clairs, et le rendu
+/// `.multicolor` du système dessinerait alors un soleil blanc, invisible sur les cartes grises.
+struct IconeMeteo: View {
+    let symbole: String
+    var taille: CGFloat
+
+    var body: some View {
+        let (principale, secondaire) = Self.couleurs(symbole)
+        Image(systemName: symbole)
+            .symbolRenderingMode(.palette)
+            .foregroundStyle(principale, secondaire)
+            .font(.system(size: taille))
+    }
+
+    /// Nuages gris, soleil jaune-orangé, lune indigo, pluie bleue, neige bleu clair, orage jaune.
+    static func couleurs(_ s: String) -> (Color, Color) {
+        let nuage = Color(hex: 0x8A94A6), soleil = Color(hex: 0xF5A623), lune = Color(hex: 0x5B6CB8)
+        let pluie = Color(hex: 0x2F80ED), neige = Color(hex: 0x7FB3E6), eclair = Color(hex: 0xF2C200)
+        switch true {
+        case s.contains("bolt"): return (nuage, eclair)
+        case s.contains("snow"), s.contains("sleet"): return (nuage, neige)
+        case s.contains("rain"), s.contains("drizzle"), s.contains("heavyrain"): return (nuage, pluie)
+        case s.hasPrefix("cloud.sun"): return (nuage, soleil)
+        case s.hasPrefix("cloud.moon"): return (nuage, lune)
+        case s.hasPrefix("sun"): return (soleil, soleil)
+        case s.hasPrefix("moon"): return (lune, lune)
+        case s.contains("wind"), s.contains("tornado"), s.contains("hurricane"): return (nuage, nuage)
+        default: return (nuage, soleil)   // nuages, brouillard, brume
+        }
+    }
 }
 
 /// Mentions d'attribution exigées par Apple pour afficher des données WeatherKit.

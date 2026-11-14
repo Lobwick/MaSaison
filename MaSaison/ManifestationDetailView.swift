@@ -35,7 +35,6 @@ struct ManifestationDetailView: View {
     @State private var erreurDocument: String?
     @State private var correspondant: Correspondant?
     @State private var photoProfil: UIImage?
-    @Environment(\.colorScheme) private var schema
 
     var body: some View {
         ScrollView(.vertical) {
@@ -289,7 +288,7 @@ struct ManifestationDetailView: View {
                     .font(.barlow(12, .semibold)).foregroundStyle(Theme.muted)
             }
             HStack(spacing: 14) {
-                Image(systemName: m.symbole).symbolRenderingMode(.multicolor).font(.system(size: 44))
+                IconeMeteo(symbole: m.symbole, taille: 44)
                     .frame(width: 56)
                 VStack(alignment: .leading, spacing: 0) {
                     Text(temperature).font(.cond(36)).foregroundStyle(Theme.text)
@@ -308,7 +307,8 @@ struct ManifestationDetailView: View {
                 Spacer()
                 if let mention = mentionMeteo {
                     VStack(alignment: .trailing, spacing: 2) {
-                        AsyncImage(url: schema == .dark ? mention.logoSombre : mention.logoClair) { $0.resizable().scaledToFit() } placeholder: { Color.clear }
+                        // les cartes sont claires même en mode sombre forcé : logo pour fond clair
+                        AsyncImage(url: mention.logoClair) { $0.resizable().scaledToFit() } placeholder: { Color.clear }
                             .frame(height: 14)
                         Link("Autres sources de données", destination: mention.mentionsLegales)
                             .font(.barlow(11)).foregroundStyle(Theme.muted)
@@ -343,30 +343,29 @@ struct ManifestationDetailView: View {
     // MARK: en-tête
 
     private var barreNavigationDetail: some View {
-        HStack {
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Theme.accent)
-            }
-            .buttonStyle(.plain)
-            TitleAndProfileActions(title: "DÉTAIL", photo: photoProfil, accent: Theme.accent)
+        // retour, nom de la manifestation (titre de la page, sur plusieurs lignes si besoin), puis notifications / profil
+        HStack(alignment: .top, spacing: 12) {
+            HeaderCircleButton(systemImage: "chevron.left", label: "Retour") { dismiss() }
+            Text(manifestation.libelle)
+                .font(.cond(28)).textCase(.uppercase).foregroundStyle(Theme.text)
+                .lineSpacing(-2)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 2)
+                .accessibilityAddTraits(.isHeader)
+            ProfileActions(photo: photoProfil, accent: Theme.accent)
         }
-        .padding(.top, -4)
+        .padding(.top, 4)
     }
 
     private var entete: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 8) {
-                Text(manifestation.libelle).font(.cond(34)).textCase(.uppercase).foregroundStyle(Theme.text)
-                    .lineSpacing(-2).fixedSize(horizontal: false, vertical: true)
+            HStack(alignment: .center, spacing: 8) {
+                if let debut = manifestation.debutDate {
+                    Text(dateTexte(debut)).font(.barlow(14, .semibold)).tracking(0.6).foregroundStyle(Theme.muted)
+                }
                 Spacer(minLength: 0)
                 BoutonEnvie(manifestation: manifestation, taille: 22)
-            }
-            if let debut = manifestation.debutDate {
-                Text(dateTexte(debut)).font(.barlow(14, .semibold)).tracking(0.6).foregroundStyle(Theme.muted)
             }
             statutBandeau
         }

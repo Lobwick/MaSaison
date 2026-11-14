@@ -433,7 +433,7 @@ private struct ProchaineCourseCard: View {
         let pluie = meteo.pluieMm >= 0.1 ? String(format: "%.1f mm", meteo.pluieMm).replacingOccurrences(of: ".", with: ",") : "Sec"
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
-                Image(systemName: meteo.symbole).symbolRenderingMode(.multicolor).font(.system(size: 26))
+                IconeMeteo(symbole: meteo.symbole, taille: 26)
                     .frame(width: 34)
                 Text(meteo.libelle).font(.barlow(14, .semibold)).foregroundStyle(Theme.text).lineLimit(1)
                 Spacer()

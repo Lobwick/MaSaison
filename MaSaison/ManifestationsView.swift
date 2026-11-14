@@ -270,13 +270,6 @@ struct ManifestationsView: View {
             TitleAndProfileActions(title: "COURSES", photo: photo, accent: Theme.accent)
             .padding(.top, -4)
 
-            HStack(spacing: 6) {
-                Circle().fill(Theme.accent).frame(width: 6, height: 6)
-                Text("Saison UFOLEP \(saisonCourses)")
-                    .font(.barlow(12, .semibold))
-                    .foregroundStyle(Theme.accent)
-            }
-
             HStack(spacing: 10) {
                 HStack(spacing: 10) {
                     Image(systemName: "magnifyingglass").foregroundStyle(Theme.muted)
@@ -1251,11 +1244,6 @@ struct ManifestationsView: View {
             )
         }
         .buttonStyle(.plain)
-    }
-
-    private var saisonCourses: String {
-        let annee = Calendar.current.component(.year, from: Date())
-        return "\(annee)-\(annee + 1)"
     }
 
     private func ligne(_ m: Manifestation) -> some View {
