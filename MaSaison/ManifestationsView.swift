@@ -54,11 +54,15 @@ struct ManifestationsView: View {
     @State private var prechargementCalendrierEnCours = false
     @State private var filtreStatut: FiltreStatut = .tous
     @State private var photo: UIImage?
+    /// Faux tant qu'aucun chargement n'a abouti : évite d'annoncer « aucune manifestation » avant d'avoir cherché.
+    @State private var premierChargementFait = false
 
     private struct Requete: Equatable {
         var departementIDs: Set<Int>
         var sportCodes: Set<String>
         var recherche: String
+        /// Les filtres par défaut sont appliqués dans `onAppear` : on n'interroge rien avant.
+        var filtresPrets: Bool
     }
 
     private enum FiltreStatut: String, CaseIterable, Identifiable {
@@ -149,7 +153,7 @@ struct ManifestationsView: View {
         .sheet(isPresented: $panneauOuvert) {
             FiltresPanel(departements: $departementIDs, sports: $sportCodes)
         }
-        .refreshable { await load() }
+        .refreshable { await auth.client.sansCache { await load() } }
         // retour d'une fiche : l'inscription a pu changer
         .onAppear {
             Task { await chargerInscriptions() }
@@ -191,10 +195,13 @@ struct ManifestationsView: View {
         .onReceive(localisation.$position) { position in
             majPositionUtilisateur(position)
         }
-        .task(id: Requete(departementIDs: departementIDs, sportCodes: sportCodes, recherche: recherche)) {
-            // petit debounce pour la saisie ; annulé si le filtre change
-            try? await Task.sleep(for: .milliseconds(350))
-            guard !Task.isCancelled else { return }
+        .task(id: Requete(departementIDs: departementIDs, sportCodes: sportCodes, recherche: recherche, filtresPrets: filtresInitialises)) {
+            guard filtresInitialises else { return }
+            // debounce seulement pour la saisie et les changements de filtre : le premier chargement part tout de suite
+            if premierChargementFait {
+                try? await Task.sleep(for: .milliseconds(350))
+                guard !Task.isCancelled else { return }
+            }
             await load()
         }
         .task { await chargerPhotoProfil() }
@@ -235,11 +242,11 @@ struct ManifestationsView: View {
 
     @ViewBuilder
     private var overlayEtat: some View {
-        if isLoading && manifestations.isEmpty {
+        if (isLoading || !premierChargementFait) && manifestations.isEmpty && errorMessage == nil {
             ProgressView().tint(Theme.accent)
         } else if let errorMessage {
             ContentUnavailableView("Erreur", systemImage: "exclamationmark.triangle", description: Text(errorMessage))
-        } else if !isLoading && manifestations.isEmpty {
+        } else if !isLoading && premierChargementFait && manifestations.isEmpty {
             ContentUnavailableView("Aucune manifestation", systemImage: "flag.slash",
                                    description: Text(nombreFiltres > 0 ? "Essayez de retirer un filtre." : ""))
         }
@@ -1289,6 +1296,12 @@ struct ManifestationsView: View {
         sportsRestants = sportCodes.isEmpty ? [nil] : sportCodes.sorted()
         chargementSuite = false
         defer { isLoading = false }
+        // affichage immédiat de la première page gardée (même périmée) ; la pagination repart ensuite de zéro
+        if manifestations.isEmpty, let gardees = await auth.client.depuisCache({ try await pageSuivante() }), !gardees.isEmpty {
+            manifestations = gardees
+            prochainePage = 1
+            sportsRestants = sportCodes.isEmpty ? [nil] : sportCodes.sorted()
+        }
         do {
             await chargerInscriptions()
             let nouvelles = try await pageSuivante()
@@ -1296,6 +1309,7 @@ struct ManifestationsView: View {
             suivi.memoriser(nouvelles)
             // filtre par département très sélectif : on continue jusqu'à avoir quelque chose à afficher
             if manifestations.isEmpty { await chargerSuite() }
+            premierChargementFait = true
             // le préchargement du calendrier a pu s'arrêter pendant la recharge : on le relance
             if vueSelectionnee == .calendrier {
                 isLoading = false

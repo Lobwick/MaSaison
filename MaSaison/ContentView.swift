@@ -37,28 +37,22 @@ struct MainTabView: View {
     /// Identité de la pile de navigation de chaque onglet : la changer ramène l'onglet à son écran racine.
     @State private var racines: [Int: UUID] = [:]
 
+    /// Onglets déjà ouverts : créés à la première visite puis gardés en vie (état, liste chargée, défilement).
+    @State private var visites: Set<Int> = []
+
     var body: some View {
         ZStack {
-            switch onglet {
-            case 0:
-                NavigationStack { MesInscriptionsView() }
-            case 1:
-                NavigationStack {
-                    ManifestationsView(vueInitiale: .liste, afficherSelecteurVue: false, afficherRecherche: true)
-                }
-            case 2:
-                NavigationStack {
-                    ManifestationsView(vueInitiale: .carte, afficherSelecteurVue: false, afficherRecherche: false)
-                }
-            case 3:
-                NavigationStack {
-                    ManifestationsView(vueInitiale: .calendrier, afficherSelecteurVue: false, afficherRecherche: false)
-                }
-            default:
-                NavigationStack { ProfilView() }
+            ForEach(Array(visites.union([onglet])).sorted(), id: \.self) { index in
+                let actif = index == onglet
+                ecran(index)
+                    // toucher l'onglet actif change cet identifiant et ramène l'onglet à son écran racine
+                    .id(racines[index])
+                    .opacity(actif ? 1 : 0)
+                    .allowsHitTesting(actif)
+                    .accessibilityHidden(!actif)
             }
         }
-        .id(racines[onglet])
+        .onChange(of: onglet, initial: true) { _, nouveau in visites.insert(nouveau) }
         .safeAreaInset(edge: .bottom) {
             if !hideFloatingTabBar {
                 // toucher l'onglet déjà actif revient à son écran racine (comme une tab bar iOS)
@@ -72,6 +66,28 @@ struct MainTabView: View {
             await filtres.loadIfNeeded(auth: auth)
             await cartes.load(auth: auth)
             filtres.appliquerOrigine(cartes: cartes.cartes)
+        }
+    }
+
+    @ViewBuilder
+    private func ecran(_ index: Int) -> some View {
+        switch index {
+        case 0:
+            NavigationStack { MesInscriptionsView() }
+        case 1:
+            NavigationStack {
+                ManifestationsView(vueInitiale: .liste, afficherSelecteurVue: false, afficherRecherche: true)
+            }
+        case 2:
+            NavigationStack {
+                ManifestationsView(vueInitiale: .carte, afficherSelecteurVue: false, afficherRecherche: false)
+            }
+        case 3:
+            NavigationStack {
+                ManifestationsView(vueInitiale: .calendrier, afficherSelecteurVue: false, afficherRecherche: false)
+            }
+        default:
+            NavigationStack { ProfilView() }
         }
     }
 }
