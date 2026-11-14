@@ -618,6 +618,7 @@ struct ManifestationsView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
         .background(Theme.surface.opacity(0.98), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .shadow(color: .black.opacity(0.08), radius: 16, y: 4)
         .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(Theme.line, lineWidth: 1))
     }
 
@@ -692,9 +693,17 @@ struct ManifestationsView: View {
             if estCalendrierPleinEcran {
                 ScrollViewReader { proxy in
                     VStack(alignment: .leading, spacing: 10) {
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: 14) {
                             TitleAndProfileActions(title: titrePage, photo: photo, accent: Theme.accent)
-                            HStack {
+                            HStack(alignment: .center, spacing: 10) {
+                                VStack(alignment: .leading, spacing: 0) {
+                                    Text(Self.formatMoisLong.string(from: moisCourant))
+                                        .font(.cond(26, .semibold)).textCase(.uppercase).foregroundStyle(Theme.text)
+                                    Text(String(Calendar.current.component(.year, from: moisCourant)))
+                                        .font(.barlow(12, .semibold)).tracking(1).foregroundStyle(Theme.muted)
+                                }
+                                .contentTransition(.numericText())
+                                .animation(.easeInOut(duration: 0.2), value: moisCourant)
                                 Spacer()
                                 boutonAujourdhui {
                                     let aujourdHui = Calendar.current.startOfDay(for: Date())
@@ -712,19 +721,17 @@ struct ManifestationsView: View {
                         .padding(.horizontal, 20)
                         .padding(.top, 24)
 
-                        Text(Self.formatMoisLongAnnee.string(from: moisCourant).capitalized)
-                            .font(.cond(42))
-                            .textCase(.none)
-                            .foregroundStyle(Theme.text)
-                            .padding(.horizontal, 12)
-                            .padding(.top, 2)
-
-                        HStack {
-                            ForEach(Array(Self.joursSemaine.enumerated()), id: \.offset) { _, jour in
-                                Text(jour).font(.cond(13, .semibold)).foregroundStyle(Theme.muted).frame(maxWidth: .infinity)
+                        HStack(spacing: 0) {
+                            ForEach(Array(Self.joursSemaine.enumerated()), id: \.offset) { index, jour in
+                                Text(jour)
+                                    .font(.barlow(11, .semibold)).tracking(1)
+                                    .foregroundStyle(index >= 5 ? Theme.faint : Theme.muted)
+                                    .frame(maxWidth: .infinity)
                             }
                         }
-                        .padding(.horizontal, 6)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .overlay(alignment: .bottom) { Rectangle().fill(Theme.line).frame(height: 1) }
 
                         GeometryReader { container in
                             ScrollView(.vertical) {
@@ -756,7 +763,7 @@ struct ManifestationsView: View {
                                     }
                                 }
                             }
-                            .padding(.horizontal, 8)
+                            .padding(.horizontal, 12)
                             .padding(.bottom, 24)
                             .coordinateSpace(name: "calendar-scroll")
                             .onAppear {
@@ -872,7 +879,7 @@ struct ManifestationsView: View {
         return HStack(spacing: 0) {
             ForEach(0..<7, id: \.self) { index in
                 if let date = cases[index] {
-                    let nbCourses = manifestationsDuJour(date).count
+                    let courses = manifestationsDuJour(date)
                     let selection = cal.isDate(date, inSameDayAs: jourSelectionne)
                     let estAujourdHui = cal.isDateInToday(date)
                     Button {
@@ -881,42 +888,37 @@ struct ManifestationsView: View {
                         moisCourant = Self.debutDuMois(jour)
                         jourPopupCalendrier = jour
                     } label: {
-                        VStack(spacing: 6) {
+                        VStack(spacing: 5) {
                             Text("\(cal.component(.day, from: date))")
-                                .font(.cond(34, .semibold))
-                                .foregroundStyle(selection ? Theme.bg : (estAujourdHui ? Theme.accent : Theme.text))
-                                .frame(width: 56, height: 56)
+                                .font(.cond(19, .semibold))
+                                .foregroundStyle(selection ? Color.white : estAujourdHui ? Theme.accent : index >= 5 ? Theme.textSoft : Theme.text)
+                                .frame(width: 36, height: 36)
                                 .background(selection ? Theme.accent : .clear, in: Circle())
-                            HStack(spacing: 3) {
-                                if nbCourses > 0 {
-                                    ForEach(0..<min(nbCourses, 3), id: \.self) { _ in
-                                        RoundedRectangle(cornerRadius: 2, style: .continuous)
-                                            .fill(Theme.accent)
-                                            .frame(width: 16, height: 4)
-                                    }
-                                } else {
-                                    RoundedRectangle(cornerRadius: 2, style: .continuous)
-                                        .fill(Color.clear)
-                                        .frame(width: 16, height: 4)
-                                }
-                            }
+                                .overlay { if estAujourdHui && !selection { Circle().stroke(Theme.accent, lineWidth: 1.5) } }
+                            pointsCourses(courses)
                         }
-                        .frame(maxWidth: .infinity, minHeight: 84)
+                        .frame(maxWidth: .infinity, minHeight: 58)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("\(Self.formatJourLong.string(from: date)), \(courses.count) course(s)")
                 } else {
-                    VStack(spacing: 6) {
-                        Text(" ").font(.cond(34, .semibold)).frame(width: 56, height: 56)
-                        RoundedRectangle(cornerRadius: 2, style: .continuous)
-                            .fill(Color.clear)
-                            .frame(width: 16, height: 4)
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 84)
+                    Color.clear.frame(maxWidth: .infinity, minHeight: 58)
                 }
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 3)
         .overlay(alignment: .bottom) { Rectangle().fill(Theme.line).frame(height: 1) }
+    }
+
+    /// Un point par course (3 max), coloré selon son état : envie, inscrit, validé, sinon accent.
+    private func pointsCourses(_ courses: [Manifestation]) -> some View {
+        HStack(spacing: 3) {
+            ForEach(Array(courses.prefix(3))) { m in
+                Circle().fill(suivi.etat(m.id).couleur ?? Theme.accent).frame(width: 5, height: 5)
+            }
+        }
+        .frame(height: 5)
     }
 
     private func miniEnteteMois(nom: String, colonne: Int) -> some View {
@@ -925,30 +927,36 @@ struct ManifestationsView: View {
                 ZStack(alignment: .leading) {
                     if index == colonne {
                         Text(nom)
-                            .font(.cond(20, .semibold))
-                            .textCase(.none)
-                            .foregroundStyle(Theme.text)
+                            .font(.cond(16, .semibold)).tracking(1).textCase(.uppercase)
+                            .foregroundStyle(Theme.accent)
+                            .fixedSize()
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             }
         }
-        .frame(height: 30)
-        .padding(.horizontal, 8)
-        .padding(.top, 2)
+        .frame(height: 34, alignment: .bottom)
+        .padding(.horizontal, 6)
+        .padding(.top, 8)
     }
 
     private func boutonAujourdhui(_ action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text("Aujourd’hui")
-                .font(.cond(14, .semibold))
-                .textCase(.none)
+                .font(.cond(15, .semibold)).tracking(1).textCase(.uppercase)
                 .foregroundStyle(Theme.text)
-                .padding(.horizontal, 10)
-                .frame(height: 36)
-                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Theme.line, lineWidth: 1))
+                .padding(.horizontal, 14)
+                .frame(height: 48)
+                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.line, lineWidth: 1))
         }
         .buttonStyle(.plain)
+    }
+
+    /// « 13:30:00 » ou « 13:30 » → « 13:30 ».
+    private static func heureCourte(_ brut: String?) -> String? {
+        guard let h = brut?.trimmingCharacters(in: .whitespaces), h.count >= 5, h.contains(":") else { return nil }
+        return String(h.prefix(5))
     }
 
     private func cleMois(_ date: Date) -> String {
@@ -963,9 +971,13 @@ struct ManifestationsView: View {
         let courses = manifestationsDuJour(jour)
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text(Self.formatJourLong.string(from: jour).capitalized)
-                    .font(.cond(18, .semibold))
-                    .foregroundStyle(Theme.text)
+                VStack(alignment: .leading, spacing: 2) {
+                    Eyebrow(courses.isEmpty ? "AUCUNE COURSE" : "\(courses.count) COURSE(S)",
+                            color: courses.isEmpty ? Theme.muted : Theme.accent)
+                    Text(Self.formatJourLong.string(from: jour))
+                        .font(.cond(22, .semibold)).textCase(.uppercase)
+                        .foregroundStyle(Theme.text)
+                }
                 Spacer()
                 Button {
                     jourPopupCalendrier = nil
@@ -987,17 +999,30 @@ struct ManifestationsView: View {
                     NavigationLink {
                         ManifestationDetailView(manifestation: manifestation)
                     } label: {
-                        HStack(spacing: 10) {
-                            DateBlock(date: manifestation.debutDate)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(manifestation.libelle).font(.cond(15, .semibold)).textCase(.uppercase).foregroundStyle(Theme.text)
+                        let etat = suivi.etat(manifestation.id)
+                        let teinte = etat.couleur ?? Theme.accent
+                        HStack(spacing: 12) {
+                            Text(Self.heureCourte(manifestation.dateDebutHoraire) ?? "—")
+                                .font(.barlow(13, .semibold))
+                                .foregroundStyle(teinte)
+                                .frame(width: 52, height: 40)
+                                .background(teinte.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(manifestation.libelle)
+                                    .font(.barlow(15, .semibold)).foregroundStyle(Theme.text).lineLimit(1)
                                 Text([manifestation.adresse?.commune?.capitalized, manifestation.modele?.libelle].compactMap { $0 }.joined(separator: " · "))
-                                    .font(.barlow(12))
-                                    .foregroundStyle(Theme.muted)
+                                    .font(.barlow(12)).foregroundStyle(Theme.muted).lineLimit(1)
                             }
-                            Spacer()
-                            Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.faint)
+                            Spacer(minLength: 6)
+                            if etat != .aucun {
+                                Image(systemName: etat == .envie ? "bookmark.fill" : etat == .inscrit ? "hourglass.circle.fill" : "checkmark.circle.fill")
+                                    .font(.system(size: 16, weight: .semibold)).foregroundStyle(teinte)
+                            }
+                            Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.faint)
                         }
+                        .padding(8)
+                        .background(Theme.surface2, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
@@ -1047,9 +1072,11 @@ struct ManifestationsView: View {
                                 Text("\(Calendar.current.component(.day, from: date))")
                                     .font(.cond(16, .semibold))
                                     .foregroundStyle(selection ? Theme.bg : Theme.text)
-                                Circle()
-                                    .fill(courses.isEmpty ? Color.clear : (selection ? Theme.bg : Theme.accent))
-                                    .frame(width: 6, height: 6)
+                                if selection || courses.isEmpty {
+                                    Circle().fill(courses.isEmpty ? Color.clear : Theme.bg).frame(width: 6, height: 6)
+                                } else {
+                                    pointsCourses(courses)
+                                }
                             }
                             .frame(maxWidth: .infinity, minHeight: 42)
                             .background(selection ? Theme.accent : Theme.surface2, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -1100,7 +1127,8 @@ struct ManifestationsView: View {
 
     private func prechargerCalendrierSiNecessaire(jusqua mois: Date) async {
         guard vueSelectionnee == .calendrier else { return }
-        guard !prechargementCalendrierEnCours else { return }
+        // pendant une recharge, c'est load() qui relance le préchargement à la fin
+        guard !isLoading, !prechargementCalendrierEnCours else { return }
         guard !sportsRestants.isEmpty else { return }
         prechargementCalendrierEnCours = true
         defer { prechargementCalendrierEnCours = false }
@@ -1268,6 +1296,11 @@ struct ManifestationsView: View {
             suivi.memoriser(nouvelles)
             // filtre par département très sélectif : on continue jusqu'à avoir quelque chose à afficher
             if manifestations.isEmpty { await chargerSuite() }
+            // le préchargement du calendrier a pu s'arrêter pendant la recharge : on le relance
+            if vueSelectionnee == .calendrier {
+                isLoading = false
+                await prechargerCalendrierSiNecessaire(jusqua: moisCourant)
+            }
         } catch is CancellationError {
         } catch let error as URLError where error.code == .cancelled {
         } catch {
@@ -1298,6 +1331,7 @@ struct ManifestationsView: View {
 
     /// Récupère la page suivante de chaque sport restant, et met à jour la progression.
     private func pageSuivante() async throws -> [Manifestation] {
+        let courante = generation
         let page = prochainePage
         let sports = sportsRestants
         let client = auth.client, libelle = recherche, structures = departementIDs.sorted()
@@ -1314,6 +1348,9 @@ struct ManifestationsView: View {
                 return tout
             }
         }
+        // une recharge (load) a démarré pendant la requête : cette page est périmée et ne doit pas
+        // écraser la pagination qu'elle vient de remettre à zéro
+        guard courante == generation else { throw CancellationError() }
         prochainePage = page + 1
         sportsRestants = sports.filter { sport in reponses.first { $0.0 == sport }?.2 ?? false }
         let trouvees = reponses.flatMap(\.1)
@@ -1340,13 +1377,6 @@ struct ManifestationsView: View {
         let f = DateFormatter()
         f.locale = Locale(identifier: "fr_FR")
         f.dateFormat = "EEEE d MMMM"
-        return f
-    }()
-
-    private static let formatMoisLongAnnee: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "fr_FR")
-        f.dateFormat = "MMMM yyyy"
         return f
     }()
 

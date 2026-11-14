@@ -78,8 +78,8 @@ private struct FloatingTabBar: View {
     private let items: [(index: Int, title: String, icon: String, selectedIcon: String)] = [
         (0, "Accueil", "house", "house.fill"),
         (1, "Courses", "bicycle", "bicycle"),
-        (2, "Carte", "map", "map.fill"),
-        (3, "Calendrier", "calendar", "calendar"),
+      //  (2, "Carte", "map", "map.fill"),
+        //(3, "Calendrier", "calendar", "calendar"),
         (4, "Profil", "person", "person.fill")
     ]
 
