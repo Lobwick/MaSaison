@@ -10,6 +10,7 @@ struct HomeView: View {
 
     @Environment(AuthModel.self) private var auth
     @Environment(CalendarStore.self) private var calendarStore
+    @Environment(RaceTrackingStore.self) private var tracking
     @State private var registrations: [Registration] = []
     @State private var results: [RaceResult] = []
     @State private var isLoading = true
@@ -42,6 +43,7 @@ struct HomeView: View {
                     NavigationLink { RegistrationDetailLoader(registration: nextRace) } label: {
                         NextRaceCard(
                             registration: nextRace,
+                            status: tracking.status(nextRace.eventID),
                             isInCalendar: calendarStore.isAdded(event: nextRace.eventID),
                             weather: weatherEventID == nextRace.eventID ? nextRaceWeather : nil,
                             accent: homeAccent,
@@ -64,7 +66,7 @@ struct HomeView: View {
 
                 if !displayedRegistrations.isEmpty {
                     section(segment == .upcoming ? "Prochain départ" : "Historique des courses",
-                            trailing: segment == .upcoming ? "Demain après-midi" : nil) {
+                            trailing: segment == .upcoming ? upcoming.first.flatMap(relativeDepartureLabel) : nil) {
                         ForEach(displayedRegistrations) { row($0) }
                     }
                 } else {
@@ -185,6 +187,28 @@ struct HomeView: View {
         return String(format: "%02d:%@", time, String(match.output.2))
     }
 
+    /// When the next race starts, relative to today: "Ce matin", "Demain après-midi", "Dans 4 jours", "Le 21 nov."…
+    /// The part of the day is only given for today and tomorrow, when the start time is known.
+    private func relativeDepartureLabel(_ registration: Registration) -> String? {
+        guard let start = registration.startDate else { return nil }
+        let cal = Calendar.current
+        guard let days = cal.dateComponents([.day], from: cal.startOfDay(for: Date()), to: cal.startOfDay(for: start)).day,
+              days >= 0 else { return nil }
+        let hour = displayedTime(registration).flatMap { Int($0.prefix(while: \.isNumber)) }
+        switch days {
+        case 0:
+            guard let hour else { return "Aujourd'hui" }
+            return hour < 12 ? "Ce matin" : hour < 18 ? "Cet après-midi" : "Ce soir"
+        case 1:
+            guard let hour else { return "Demain" }
+            return "Demain " + (hour < 12 ? "matin" : hour < 18 ? "après-midi" : "soir")
+        case 2...6:
+            return "Dans \(days) jours"
+        default:
+            return "Le " + Date.fr("d MMM").string(from: start)
+        }
+    }
+
     private func normalizeTime(_ raw: String?) -> String? {
         guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return nil }
         if let d = Date.fr("HH:mm:ss").date(from: raw) { return Date.fr("HH:mm").string(from: d) }
@@ -210,6 +234,8 @@ struct HomeView: View {
         }
         do {
             registrations = try await auth.withSession { try await auth.client.fetchRegistrations() }
+            // registered / confirmed status of the next race card (also refreshed on pull to refresh)
+            await tracking.refresh(auth)
             await loadRegistrationTimes()
             // results are a bonus: their failure does not block the home screen
             results = (try? await auth.withSession { try await auth.client.fetchResults() }) ?? results
@@ -306,6 +332,8 @@ struct HomeView: View {
 
 private struct NextRaceCard: View {
     let registration: Registration
+    /// Registration status from `RaceTrackingStore`: only `.confirmed` means paid.
+    let status: TrackingStatus
     let isInCalendar: Bool
     let weather: WeatherSummary?
     let accent: Color
@@ -318,7 +346,7 @@ private struct NextRaceCard: View {
             HStack {
                 Eyebrow("BRIEF JOUR DE COURSE")
                 Spacer()
-                Pill(text: "\(shortStatus) CONFIRMÉ", fg: accent, bg: accent.opacity(0.12))
+                Pill(text: statusPillText, fg: statusTint, bg: statusTint.opacity(0.12))
             }
             HStack(spacing: 18) {
                 countdownRing
@@ -342,9 +370,9 @@ private struct NextRaceCard: View {
             }
             Divider().overlay(Theme.line)
             HStack {
-                Label("Engagement validé", systemImage: "checkmark.seal")
+                Label(statusFooter.text, systemImage: statusFooter.icon)
                     .font(.barlow(13, .semibold))
-                    .foregroundStyle(accent)
+                    .foregroundStyle(statusTint)
                 Spacer()
                 if let navigationURL {
                     Link(destination: navigationURL) {
@@ -419,6 +447,31 @@ private struct NextRaceCard: View {
         if secondsLeft <= 0 { return "Jour J" }
         if secondsLeft < 86_400 { return "H-\(hoursLeft)" }
         return "J-\(daysLeft)"
+    }
+
+    /// Confirmed in the accent color, payment pending in blue, unknown (tracking not loaded yet) in grey.
+    private var statusTint: Color {
+        switch status {
+        case .confirmed: accent
+        case .registered: Theme.secondary
+        case .untracked, .wishlist: Theme.muted
+        }
+    }
+
+    private var statusPillText: String {
+        switch status {
+        case .confirmed: "\(shortStatus) CONFIRMÉ"
+        case .registered: "\(shortStatus) À PAYER"
+        case .untracked, .wishlist: shortStatus
+        }
+    }
+
+    private var statusFooter: (text: String, icon: String) {
+        switch status {
+        case .confirmed: ("Engagement validé", "checkmark.seal")
+        case .registered: ("Inscrit · paiement en attente", "hourglass")
+        case .untracked, .wishlist: ("Inscrit", "checkmark.circle")
+        }
     }
 
     private var startTimeLabel: String {

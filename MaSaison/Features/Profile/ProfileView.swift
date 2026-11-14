@@ -11,6 +11,9 @@ struct ProfileView: View {
     @State private var photo: UIImage?
     @State private var pastCardsExpanded = false
     @State private var selectedCardIndex = 0
+    /// License card shown full screen (tap on a card).
+    @State private var presentedCard: LicenseCard?
+    @Namespace private var cardNamespace
 
     var body: some View {
         ScrollView(.vertical) {
@@ -41,6 +44,10 @@ struct ProfileView: View {
             }
         }
         .onAppear { AppTips.home.invalidate(reason: .actionPerformed) }
+        .fullScreenCover(item: $presentedCard) { card in
+            LicenseCardFullScreen(card: card)
+                .navigationTransition(.zoom(sourceID: card.id, in: cardNamespace))
+        }
     }
 
     // MARK: header
@@ -137,9 +144,14 @@ struct ProfileView: View {
             } else {
                 TabView(selection: $selectedCardIndex) {
                     ForEach(Array(activeCards.enumerated()), id: \.offset) { index, card in
-                        LicenseWalletCard(card: card)
-                            .padding(.horizontal, 2)
-                            .tag(index)
+                        Button { presentedCard = card } label: {
+                            LicenseWalletCard(card: card)
+                        }
+                        .buttonStyle(.plain)
+                        .matchedTransitionSource(id: card.id, in: cardNamespace)
+                        .accessibilityHint("Affiche la licence en plein écran")
+                        .padding(.horizontal, 2)
+                        .tag(index)
                     }
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
@@ -154,22 +166,10 @@ struct ProfileView: View {
                         }
                     }
                     Spacer()
-                    Label("Balayer pour changer de licence", systemImage: "hand.draw")
+                    Label("Toucher pour agrandir, balayer pour changer", systemImage: "hand.tap")
                         .font(.barlow(11))
                         .foregroundStyle(Theme.muted)
                 }
-
-                Button {
-                    // Matches the mockup: CTA present, behavior already handled in the event detail.
-                } label: {
-                    Label("Présenter le QR code au commissaire", systemImage: "qrcode")
-                        .font(.barlow(15, .semibold))
-                        .foregroundStyle(Theme.accent)
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                        .background(Theme.surface2, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.line, lineWidth: 1))
-                }
-                .buttonStyle(.plain)
             }
 
             if !pastCards.isEmpty { pastCardsSection }
@@ -266,6 +266,8 @@ private struct SettingsLinkRow: View {
 
 private struct LicenseWalletCard: View {
     let card: LicenseCard
+    /// Shows the "tap to enlarge" icon (hidden once the card is full screen).
+    var showsExpandHint = true
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -335,16 +337,47 @@ private struct LicenseWalletCard: View {
                         .font(.barlow(12))
                         .foregroundStyle(Color.white.opacity(0.78))
                     Spacer()
-                    Image(systemName: "qrcode")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(Color.white)
-                        .frame(width: 30, height: 30)
-                        .background(Color.white.opacity(0.16), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    if showsExpandHint {
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Color.white)
+                            .frame(width: 30, height: 30)
+                            .background(Color.white.opacity(0.16), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .accessibilityHidden(true)
+                    }
                 }
             }
             .padding(20)
         }
         .shadow(color: Color.black.opacity(0.18), radius: 20, x: 0, y: 10)
+    }
+}
+
+/// License card enlarged over a blurred, see-through background, to show to an official.
+/// Tapping anywhere (or the close button) dismisses it.
+private struct LicenseCardFullScreen: View {
+    let card: LicenseCard
+    @Environment(\.dismiss) private var dismiss
+
+    /// Size the card is laid out at before being scaled up to the screen width.
+    private static let cardSize = CGSize(width: 340, height: 238)
+
+    var body: some View {
+        GeometryReader { proxy in
+            let scale = min((proxy.size.width - 32) / Self.cardSize.width, 1.6)
+            LicenseWalletCard(card: card, showsExpandHint: false)
+                .frame(width: Self.cardSize.width, height: Self.cardSize.height)
+                .scaleEffect(scale)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { dismiss() }
+        .overlay(alignment: .topTrailing) {
+            HeaderCircleButton(systemImage: "xmark", label: "Fermer") { dismiss() }
+                .padding(20)
+        }
+        .accessibilityAction(.escape) { dismiss() }
+        .presentationBackground(.ultraThinMaterial)
     }
 }
 

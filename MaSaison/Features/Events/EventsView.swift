@@ -43,6 +43,8 @@ struct EventsView: View {
     @State private var selectedDay = Calendar.current.startOfDay(for: Date())
     @State private var mapPosition: MapCameraPosition = .region(Self.franceRegion)
     @State private var didCenterOnUser = false
+    /// Map style chosen with the "Style de carte" button (plan → satellite → hybride).
+    @State private var mapStyleOption: MapStyleOption = .standard
     @StateObject private var locationProvider = MapLocationProvider()
     @State private var previewTravelTime: TravelTime?
     @State private var isComputingPreviewTravelTime = false
@@ -63,6 +65,34 @@ struct EventsView: View {
         var searchText: String
         /// Default filters are applied in `onAppear`: nothing is queried before that.
         var filtersReady: Bool
+    }
+
+    private enum MapStyleOption {
+        case standard, imagery, hybrid
+
+        var style: MapStyle {
+            switch self {
+            case .standard: .standard(elevation: .flat)
+            case .imagery: .imagery(elevation: .flat)
+            case .hybrid: .hybrid(elevation: .flat)
+            }
+        }
+
+        var label: String {
+            switch self {
+            case .standard: "Plan"
+            case .imagery: "Satellite"
+            case .hybrid: "Hybride"
+            }
+        }
+
+        var next: MapStyleOption {
+            switch self {
+            case .standard: .imagery
+            case .imagery: .hybrid
+            case .hybrid: .standard
+            }
+        }
     }
 
     private enum StatusFilter: String, CaseIterable, Identifiable {
@@ -391,7 +421,7 @@ struct EventsView: View {
                     Map(position: $mapPosition) {
                         mapPinAnnotations
                     }
-                    .mapStyle(.standard(elevation: .flat))
+                    .mapStyle(mapStyleOption.style)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .ignoresSafeArea(edges: .bottom)
 
@@ -420,8 +450,9 @@ struct EventsView: View {
                                     mapPosition = .region(MKCoordinateRegion(center: position.coordinate, latitudinalMeters: 70_000, longitudinalMeters: 70_000))
                                 }
                             }
-                            mapControlButton(systemImage: "square.stack.3d.up", label: "Style de carte") {
-                                // Visual placeholder matching the Stitch mockup; style is already handled by MapKit.
+                            mapControlButton(systemImage: mapStyleOption == .standard ? "square.stack.3d.up" : "square.stack.3d.up.fill",
+                                             label: "Style de carte : \(mapStyleOption.label)") {
+                                withAnimation(.easeInOut(duration: 0.25)) { mapStyleOption = mapStyleOption.next }
                             }
                         }
                     }
@@ -457,7 +488,7 @@ struct EventsView: View {
                     Map(position: $mapPosition) {
                         mapPinAnnotations
                     }
-                    .mapStyle(.standard(elevation: .flat))
+                    .mapStyle(mapStyleOption.style)
                     .frame(height: 320)
                     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                     .overlay { RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Theme.line, lineWidth: 1) }
