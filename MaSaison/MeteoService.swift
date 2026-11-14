@@ -3,7 +3,7 @@ import Foundation
 import WeatherKit
 
 /// Prévision météo du jour d'une manifestation.
-struct Meteo {
+struct Meteo: Codable {
     let libelle: String
     let symbole: String
     let tempMin: Double
@@ -39,7 +39,7 @@ struct Meteo {
 }
 
 /// Prévision d'une heure (début de l'heure dans `date`).
-struct MeteoHeure {
+struct MeteoHeure: Codable {
     let date: Date
     let libelle: String
     let symbole: String
@@ -81,11 +81,30 @@ enum MeteoService {
     }
 
     /// `nil` si la date est passée ou hors de l'horizon ; lève l'erreur WeatherKit si la requête échoue.
+    /// Servie depuis le cache tant que WeatherKit la considère valable (`metadata.expirationDate`).
     static func prevision(latitude: Double, longitude: Double, jour: Date) async throws -> Meteo? {
         let calendrier = Self.calendrier
         let cible = calendrier.startOfDay(for: jour)
         guard dansHorizon(jour), let lendemain = calendrier.date(byAdding: .day, value: 1, to: cible) else { return nil }
 
+        let cle = MeteoCache.cle(latitude: latitude, longitude: longitude, jour: cible)
+        if let enCache = MeteoCache.lire(cle) { return enCache }
+        // accueil et détail peuvent demander la même prévision en même temps : un seul appel
+        if let enCours = requetesEnCours[cle] { return try await enCours.value.0 }
+
+        let requete = Task { try await telecharger(latitude: latitude, longitude: longitude, cible: cible, lendemain: lendemain) }
+        requetesEnCours[cle] = requete
+        defer { requetesEnCours[cle] = nil }
+        let (meteo, expiration) = try await requete.value
+        MeteoCache.ecrire(meteo, cle: cle, expiration: expiration)
+        return meteo
+    }
+
+    private static var requetesEnCours: [String: Task<(Meteo, Date), Error>] = [:]
+
+    /// Appel WeatherKit ; l'expiration retenue est la plus proche des deux prévisions.
+    private static func telecharger(latitude: Double, longitude: Double, cible: Date, lendemain: Date) async throws -> (Meteo, Date) {
+        let calendrier = Self.calendrier
         let lieu = CLLocation(latitude: latitude, longitude: longitude)
         let (jours, heures) = try await WeatherService.shared.weather(for: lieu,
                                                                       including: .daily(startDate: cible, endDate: lendemain),
@@ -93,8 +112,9 @@ enum MeteoService {
         guard let j = jours.forecast.first(where: { calendrier.isDate($0.date, inSameDayAs: cible) }) ?? jours.forecast.first else {
             throw MeteoErreur.jourAbsent
         }
+        let expiration = min(jours.metadata.expirationDate, heures.metadata.expirationDate)
 
-        return Meteo(
+        let meteo = Meteo(
             libelle: j.condition.description,
             symbole: j.symbolName,
             tempMin: j.lowTemperature.converted(to: .celsius).value,
@@ -114,10 +134,63 @@ enum MeteoService {
                     ventKmh: h.wind.speed.converted(to: .kilometersPerHour).value,
                     rafalesKmh: h.wind.gust?.converted(to: .kilometersPerHour).value)
             })
+        return (meteo, expiration)
     }
 
     static func attribution() async -> MeteoAttribution? {
         guard let a = try? await WeatherService.shared.attribution else { return nil }
         return MeteoAttribution(logoClair: a.combinedMarkLightURL, logoSombre: a.combinedMarkDarkURL, mentionsLegales: a.legalPageURL)
+    }
+}
+
+/// Cache des prévisions par lieu (~1 km) et jour, valable jusqu'à l'expiration fournie par WeatherKit.
+/// En mémoire et dans `Caches/meteo.json` (le système peut le purger) ; les entrées expirées sont retirées
+/// au chargement et à chaque écriture, et tout est vidé à la déconnexion.
+enum MeteoCache {
+    private struct Entree: Codable {
+        let meteo: Meteo
+        let expiration: Date
+    }
+
+    private static let fichier = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("meteo.json")
+
+    private static var entrees: [String: Entree] = {
+        guard let data = try? Data(contentsOf: fichier),
+              let lues = try? JSONDecoder().decode([String: Entree].self, from: data) else { return [:] }
+        return lues.filter { $0.value.expiration > Date() }
+    }()
+
+    /// « 50.42,3.51-2026-11-21 » : coordonnées arrondies au centième (~1 km) et jour.
+    static func cle(latitude: Double, longitude: Double, jour: Date) -> String {
+        let j = jour.formatted(.iso8601.year().month().day())
+        return String(format: "%.2f,%.2f-", latitude, longitude) + j
+    }
+
+    static func lire(_ cle: String) -> Meteo? {
+        guard let e = entrees[cle] else { return nil }
+        guard e.expiration > Date() else {
+            entrees[cle] = nil
+            enregistrer()
+            return nil
+        }
+        return e.meteo
+    }
+
+    static func ecrire(_ meteo: Meteo, cle: String, expiration: Date) {
+        guard expiration > Date() else { return }
+        entrees[cle] = Entree(meteo: meteo, expiration: expiration)
+        enregistrer()
+    }
+
+    /// Vide tout le cache (déconnexion).
+    static func vider() {
+        entrees = [:]
+        try? FileManager.default.removeItem(at: fichier)
+    }
+
+    private static func enregistrer() {
+        entrees = entrees.filter { $0.value.expiration > Date() }
+        if let data = try? JSONEncoder().encode(entrees) { try? data.write(to: fichier, options: .atomic) }
     }
 }
